@@ -1,0 +1,1434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Makerspace Print Queue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: sticky tab bar over a single working column; Submit splits into viewer | report at desktop widths */
+:root{
+  --bg:#EEF2F4; --surface:#FFFFFF; --sunk:#E3E9EC; --ink:#14212B; --muted:#56687A; --line:#D3DCE2;
+  --accent:#0B6E7A; --accent-ink:#FFFFFF; --accent-soft:#D5ECEE;
+  --ok:#24803A; --ok-soft:#DDF1E1; --warn:#A35F00; --warn-soft:#FBEBD3; --bad:#B42318; --bad-soft:#FBE1DE; --info:#3C5A99; --info-soft:#E1E8F6;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1519; --surface:#172026; --sunk:#111A1F; --ink:#E4ECF0; --muted:#93A5B3; --line:#2A3740;
+  --accent:#3FB8C6; --accent-ink:#06262B; --accent-soft:#163A40;
+  --ok:#5BC777; --ok-soft:#15301D; --warn:#F0A846; --warn-soft:#3A2A12; --bad:#FF7B6E; --bad-soft:#3D1A17; --info:#8FA9E8; --info-soft:#1B2540;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1519; --surface:#172026; --sunk:#111A1F; --ink:#E4ECF0; --muted:#93A5B3; --line:#2A3740;
+  --accent:#3FB8C6; --accent-ink:#06262B; --accent-soft:#163A40;
+  --ok:#5BC777; --ok-soft:#15301D; --warn:#F0A846; --warn-soft:#3A2A12; --bad:#FF7B6E; --bad-soft:#3D1A17; --info:#8FA9E8; --info-soft:#1B2540;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.auth{display:flex;gap:8px;align-items:center;min-height:32px}
+.auth .who{font-size:13px;font-weight:700;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-block:12px}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em;margin:0}
+.brand .layer{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap}
+nav.tabs button{font:inherit;font-weight:700;font-size:14px;border:0;background:transparent;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--ink)}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs .count{font-family:var(--f-mono);font-size:11px;font-weight:400;margin-left:4px;color:var(--muted)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.drop:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+main{padding-block:24px 64px}
+h2{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0;text-wrap:balance}
+.lede{color:var(--muted);max-width:65ch;margin:6px 0 0}
+.section-head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.banner{border:1px solid var(--line);background:var(--info-soft);border-radius:var(--r);padding:10px 14px;margin-bottom:16px;font-size:14px}
+.banner[data-tone="warn"]{background:var(--warn-soft)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.btn{font:inherit;font-weight:700;font-size:14px;border-radius:8px;padding:9px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+
+/* Submit */
+.submit-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){.submit-grid{grid-template-columns:minmax(0,1fr)}}
+.viewer{position:relative;aspect-ratio:4/3;max-width:100%;background:var(--sunk);border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+.viewer canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.viewer .legend{position:absolute;left:10px;bottom:10px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;background:color-mix(in srgb,var(--surface) 85%,transparent);padding:6px 10px;border-radius:8px}
+.viewer .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.viewer .vtools{position:absolute;right:10px;top:10px;display:flex;gap:6px}
+.viewer .tag{position:absolute;left:10px;top:10px;font-size:12px;font-weight:700;background:var(--warn-soft);color:var(--warn);padding:3px 8px;border-radius:6px}
+.viewer .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:20px}
+.drop{border:2px dashed var(--line);border-radius:var(--r);padding:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px;background:var(--surface);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop strong{display:block}
+.readout{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+@media (max-width:520px){.readout{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.readout div{background:var(--surface);padding:10px 12px;min-width:0}
+.readout b{display:block;font-family:var(--f-mono);font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gline{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}
+.verdict{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:var(--r);margin:16px 0 10px;font-weight:700}
+.verdict[data-tone="ok"]{background:var(--ok-soft);color:var(--ok)}
+.verdict[data-tone="warn"]{background:var(--warn-soft);color:var(--warn)}
+.verdict[data-tone="bad"]{background:var(--bad-soft);color:var(--bad)}
+.verdict span{color:var(--ink);font-weight:400}
+.issues{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.issue{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.issue[data-sev="error"]{border-left-color:var(--bad)}
+.issue[data-sev="warn"]{border-left-color:var(--warn)}
+.issue[data-sev="info"]{border-left-color:var(--info)}
+.issue[data-sev="ok"]{border-left-color:var(--ok)}
+.issue .ih{display:flex;gap:8px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.issue p{margin:4px 0 0;font-size:14px}
+.issue .fix{color:var(--muted)}
+.issue .fix b{color:var(--ink)}
+.sev{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.sev[data-sev="error"]{background:var(--bad-soft);color:var(--bad)}
+.sev[data-sev="warn"]{background:var(--warn-soft);color:var(--warn)}
+.sev[data-sev="info"]{background:var(--info-soft);color:var(--info)}
+.sev[data-sev="ok"]{background:var(--ok-soft);color:var(--ok)}
+form.job{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+form.job .full{grid-column:1/-1}
+@media (max-width:520px){form.job{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-weight:700;font-size:13px}
+input,select,textarea{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+textarea{min-height:64px;resize:vertical}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.ai{margin-top:16px;padding:14px;border-radius:var(--r);background:var(--accent-soft);white-space:pre-wrap;font-size:14px}
+.ai h3{margin-bottom:6px}
+
+/* Queue */
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:18px}
+.stats div b{display:block;font-family:var(--f-display);font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.lanes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px}
+.lane{padding:14px;display:flex;flex-direction:column;gap:10px}
+.lane .lh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.bar{height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.lane ol{margin:0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:3px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:820px;font-size:14px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.row{cursor:pointer}
+tr.row:hover td{background:var(--bg)}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.thumb{width:56px;height:42px;border-radius:6px;background:var(--sunk);object-fit:cover;display:block}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;background:var(--sunk);color:var(--muted)}
+.pill[data-s="queued"]{background:var(--accent-soft);color:var(--accent)}
+.pill[data-s="printing"]{background:var(--info-soft);color:var(--info)}
+.pill[data-s="done"]{background:var(--ok-soft);color:var(--ok)}
+.pill[data-s="needs_fix"],.pill[data-s="late"]{background:var(--bad-soft);color:var(--bad)}
+.pill[data-s="urgent"]{background:var(--warn-soft);color:var(--warn)}
+.score{display:inline-flex;align-items:center;gap:8px}
+.score .meter{width:54px;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.score .meter i{display:block;height:100%;background:var(--accent)}
+.detail td{background:var(--bg);font-size:13px}
+.breakdown{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.empty-state{padding:36px 20px;text-align:center;color:var(--muted)}
+.empty-state h3{color:var(--ink);margin-bottom:6px}
+
+/* Jobs (mine/teacher) */
+.cards{display:flex;flex-direction:column;gap:12px}
+.card{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:14px;padding:14px;align-items:start}
+@media (max-width:640px){.card{grid-template-columns:72px minmax(0,1fr)}.card .cact{grid-column:1/-1}}
+.card .thumb{width:100%;height:auto;aspect-ratio:4/3}
+.card .meta{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:4px}
+.card .cact{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:170px}
+.card .cact select{font-size:13px;padding:5px 8px}
+.note{font-size:13px;margin-top:6px;padding:6px 10px;border-radius:6px;background:var(--warn-soft)}
+.mini-issues{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+details.settings{margin-top:28px}
+details.settings summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font-size:18px;padding:12px 0}
+.set-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin:10px 0 16px}
+.printer-row{display:grid;grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr)) auto auto;gap:8px;align-items:center;margin-bottom:8px}
+@media (max-width:640px){.printer-row{grid-template-columns:1fr 1fr 1fr}}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:700;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+.filter{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><h1>Makerspace Print Queue</h1><span class="layer">0.20 mm · FDM</span></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-view="submit" aria-selected="true">Submit a model</button>
+      <button role="tab" data-view="queue" aria-selected="false">Queue<span class="count" id="qcount"></span></button>
+      <button role="tab" data-view="mine" aria-selected="false">My prints<span class="count" id="mcount"></span></button>
+      <button role="tab" data-view="teacher" aria-selected="false" id="teacherTab" hidden>Teacher</button>
+    </nav>
+    <button class="btn small" id="btnTheme" type="button" aria-label="Color theme">Theme: Auto</button>
+    <div class="auth" id="authBox"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="connBanner" class="banner" hidden></div>
+
+  <!-- SUBMIT -->
+  <section id="view-submit">
+    <div class="section-head">
+      <div>
+        <h2>Check your model, then join the queue</h2>
+        <p class="lede">Upload an STL. It's checked right here in your browser for problems that make prints fail: holes in the surface, floating parts, tiny gaps, tippy bases and big overhangs.</p>
+      </div>
+    </div>
+    <div class="submit-grid">
+      <div>
+        <div class="viewer" id="viewer">
+          <canvas id="cv" aria-label="3D preview of the model"></canvas>
+          <div class="empty" id="viewerEmpty" hidden>3D preview isn't available in this browser. The checks still run.</div>
+          <span class="tag" id="exampleTag" hidden>Example model</span>
+          <div class="vtools">
+            <button class="btn small" id="btnIssues" aria-pressed="true">Highlight issues</button>
+            <button class="btn small" id="btnReset">Reset view</button>
+          </div>
+          <div class="legend">
+            <span><i style="background:#3FA34D"></i>On the bed</span>
+            <span><i style="background:#E8A13A"></i>Overhang &gt; 45°</span>
+            <span><i style="background:#E5484D"></i>Floating part / hole edge</span>
+          </div>
+        </div>
+        <label class="drop" id="drop" tabindex="0">
+          <input type="file" id="file" accept=".stl,model/stl,application/sla" hidden>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+          <span><strong>Drop an STL here or click to choose</strong><span class="muted">Binary or ASCII STL, measured in millimeters</span></span>
+          <button type="button" class="btn small" id="btnExample" style="margin-left:auto">Load example</button>
+        </label>
+      </div>
+
+      <div id="report">
+        <div class="readout" id="readout"></div>
+        <p class="gline" id="gline"></p>
+        <div class="verdict" id="verdict" hidden></div>
+        <ul class="issues" id="issues"></ul>
+
+        <form class="job" id="jobForm" autocomplete="on">
+          <div class="field"><label for="fName">Your name</label><input id="fName" required placeholder="First name, last initial"></div>
+          <div class="field"><label for="fClass">Grade</label>
+            <select id="fClass" required>
+              <option value="" disabled selected>Choose one</option>
+              <option>Grade 4</option><option>Grade 5</option><option>Grade 6</option>
+              <option>Grade 7</option><option>Grade 8</option><option>Faculty</option>
+            </select></div>
+          <div class="field"><label for="fProject">Project</label><input id="fProject" required placeholder="What is it?"></div>
+          <div class="field"><label for="fDue">Needed by</label><input id="fDue" type="datetime-local" required></div>
+          <div class="field"><label for="fColor">Color preference</label><input id="fColor" placeholder="Any"></div>
+          <div class="field"><label for="fQty">Copies</label><input id="fQty" type="number" min="1" max="20" value="1"></div>
+          <div class="field full"><label for="fNotes">Notes for your teacher</label><textarea id="fNotes" placeholder="Anything about orientation, supports, or why it's needed by that date"></textarea></div>
+          <div class="actions full">
+            <button class="btn primary" id="btnSubmit" type="submit" disabled>Add to queue</button>
+            <span class="muted" id="submitHint">Upload a model to continue.</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUEUE -->
+  <section id="view-queue" hidden>
+    <div class="section-head">
+      <div>
+        <h2>Print queue</h2>
+        <p class="lede">Jobs are ordered by a priority score built from how soon they're due, how long they take, filament use, time waiting, model quality and any teacher override. Start times are projected across every printer.</p>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="lanes" id="lanes"></div>
+    <div id="queueTable"></div>
+  </section>
+
+  <!-- MINE -->
+  <section id="view-mine" hidden>
+    <div class="section-head"><div><h2>My prints</h2><p class="lede">Everything you've submitted, where it sits in line, and any notes from your teacher.</p></div></div>
+    <div class="cards" id="mine"></div>
+  </section>
+
+  <!-- TEACHER -->
+  <section id="view-teacher" hidden>
+    <div class="section-head">
+      <div><h2>Teacher controls</h2><p class="lede">Start, finish and send back jobs, bump urgent ones, open files in Drive, and set up printers and scoring.</p><p class="muted" id="driveStatus" style="font-size:13px;margin:6px 0 0"></p></div>
+      <div class="filter" id="tFilter">
+        <button class="btn small" data-f="active" aria-pressed="true">Active</button>
+        <button class="btn small" data-f="needs_fix" aria-pressed="false">Needs fix</button>
+        <button class="btn small" data-f="archived" aria-pressed="false">Archived</button>
+        <button class="btn small" data-f="all" aria-pressed="false">All</button>
+      </div>
+    </div>
+    <div class="toolbar" role="search">
+      <div class="field" style="flex:1 1 240px"><label for="tSearch">Search</label><input id="tSearch" type="search" placeholder="Student, project, grade or file name"></div>
+      <div class="field" style="flex:0 1 220px"><label for="tSort">Sort by</label>
+        <select id="tSort">
+          <option value="status">Status, then priority</option>
+          <option value="priority">Priority</option>
+          <option value="printability">Printability</option>
+          <option value="time">Estimated print time</option>
+          <option value="submitted">Date submitted</option>
+        </select></div>
+      <button class="btn small" id="tDir" type="button" style="align-self:end;margin-bottom:3px"></button>
+    </div>
+    <div class="actions" style="margin:0 0 10px;justify-content:space-between"><p class="muted" id="tCount" style="font-size:13px;margin:0"></p><button class="btn small" id="btnArchiveAll" type="button" hidden></button></div>
+    <div class="cards" id="tJobs"></div>
+    <details class="settings panel" id="settingsPanel" style="padding:0 16px 16px">
+      <summary>Printers and scoring</summary>
+      <h3>Printers</h3>
+      <p class="muted" style="margin:4px 0 10px">Build volume in mm. Offline printers get no new jobs.</p>
+      <div id="printerRows"></div>
+      <button class="btn small" id="btnAddPrinter" type="button">Add printer</button>
+      <h3 style="margin-top:20px">Time and filament estimates</h3>
+      <div class="set-grid" id="estFields"></div>
+      <h3>Priority weights</h3>
+      <p class="muted" style="margin:4px 0 0">Relative importance. The urgent flag adds its points on top.</p>
+      <div class="set-grid" id="weightFields"></div>
+      <h3>Teachers</h3>
+      <p class="muted" style="margin:4px 0 8px">One email per line. These people get the Teacher tab. The owner listed in the Apps Script always does.</p>
+      <div class="field" style="max-width:420px;margin-bottom:16px"><label for="teacherList">Teacher emails</label><textarea id="teacherList" placeholder="name@farbrook.org"></textarea></div>
+      <div class="actions"><button class="btn primary" id="btnSaveSettings" type="button">Save settings</button><span class="muted" id="calibNote"></span></div>
+    </details>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ==ANALYZER START==
+const Analyzer = (() => {
+  function parseSTL(buf) {
+    const len = buf.byteLength;
+    if (len < 15) throw new Error("This file is empty or too small to be an STL.");
+    const dv = new DataView(buf);
+    let binary = false;
+    if (len >= 84) {
+      const n = dv.getUint32(80, true);
+      if (84 + n * 50 === len) binary = true;
+    }
+    if (!binary) {
+      const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(len, 4096)));
+      const looksAscii = /^\s*solid/i.test(head) && /facet|vertex/i.test(head);
+      if (!looksAscii) {
+        if (len >= 84 && 84 + dv.getUint32(80, true) * 50 <= len) binary = true;
+        else throw new Error("This doesn't look like an STL file. Export your model as STL and try again.");
+      }
+    }
+    if (binary) {
+      const n = dv.getUint32(80, true);
+      if (n === 0) throw new Error("This STL has no triangles in it.");
+      const pos = new Float32Array(n * 9);
+      for (let i = 0; i < n; i++) {
+        const o = 84 + i * 50 + 12;
+        for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true);
+      }
+      return pos;
+    }
+    const text = new TextDecoder().decode(new Uint8Array(buf));
+    const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g;
+    const out = []; let m;
+    while ((m = re.exec(text))) out.push(+m[1], +m[2], +m[3]);
+    const n = Math.floor(out.length / 9);
+    if (!n) throw new Error("This STL has no triangles in it.");
+    return new Float32Array(out.slice(0, n * 9));
+  }
+
+  function hull2(pts) { // Andrew monotone chain; pts: [[x,y],...]
+    if (pts.length < 3) return pts.slice();
+    pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+    up.pop(); lo.pop();
+    return lo.concat(up);
+  }
+  // signed distance from point to convex polygon (CCW). positive = inside
+  function insideMargin(h, x, y) {
+    if (h.length < 3) return -Infinity;
+    let inside = true, best = Infinity;
+    for (let i = 0; i < h.length; i++) {
+      const a = h[i], b = h[(i + 1) % h.length];
+      const ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey) || 1e-9;
+      const d = ((x - a[0]) * ey - (y - a[1]) * ex) / L; // >0 means right side (outside for CCW)
+      if (d > 0) inside = false;
+      best = Math.min(best, Math.abs(d));
+    }
+    return inside ? best : -best;
+  }
+
+  // distance from point p to triangle at pos[o..o+8] (Ericson, Real-Time Collision Detection)
+  function ptTri(px, py, pz, pos, o) {
+    const ax = pos[o], ay = pos[o + 1], az = pos[o + 2];
+    const abx = pos[o + 3] - ax, aby = pos[o + 4] - ay, abz = pos[o + 5] - az;
+    const acx = pos[o + 6] - ax, acy = pos[o + 7] - ay, acz = pos[o + 8] - az;
+    const apx = px - ax, apy = py - ay, apz = pz - az;
+    const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+    let qx, qy, qz;
+    if (d1 <= 0 && d2 <= 0) { qx = ax; qy = ay; qz = az; }
+    else {
+      const bpx = px - pos[o + 3], bpy = py - pos[o + 4], bpz = pz - pos[o + 5];
+      const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+      const cpx = px - pos[o + 6], cpy = py - pos[o + 7], cpz = pz - pos[o + 8];
+      const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+      const vc = d1 * d4 - d3 * d2, vb = d5 * d2 - d1 * d6, va = d3 * d6 - d5 * d4;
+      if (d3 >= 0 && d4 <= d3) { qx = pos[o + 3]; qy = pos[o + 4]; qz = pos[o + 5]; }
+      else if (d6 >= 0 && d5 <= d6) { qx = pos[o + 6]; qy = pos[o + 7]; qz = pos[o + 8]; }
+      else if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); qx = ax + v * abx; qy = ay + v * aby; qz = az + v * abz; }
+      else if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); qx = ax + w * acx; qy = ay + w * acy; qz = az + w * acz; }
+      else if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) { const w = (d4 - d3) / ((d4 - d3) + (d5 - d6)); qx = pos[o + 3] + w * (pos[o + 6] - pos[o + 3]); qy = pos[o + 4] + w * (pos[o + 7] - pos[o + 4]); qz = pos[o + 5] + w * (pos[o + 8] - pos[o + 5]); }
+      else { const den = 1 / (va + vb + vc), v = vb * den, w = vc * den; qx = ax + abx * v + acx * w; qy = ay + aby * v + acy * w; qz = az + abz * v + acz * w; }
+    }
+    return Math.hypot(px - qx, py - qy, pz - qz);
+  }
+
+  function analyze(pos) {
+    const T = (pos.length / 9) | 0;
+    let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < T * 9; i += 3) {
+      const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const dims = [maxX - minX, maxY - minY, maxZ - minZ];
+    const diag = Math.hypot(...dims) || 1;
+    // weld vertices
+    const inv = 1 / Math.max(1e-5, diag * 1e-7);
+    const vmap = new Map(); const vx = [], vy = [], vz = [];
+    const tri = new Uint32Array(T * 3);
+    for (let i = 0; i < T * 3; i++) {
+      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      const k = Math.round(x * inv) + "," + Math.round(y * inv) + "," + Math.round(z * inv);
+      let id = vmap.get(k);
+      if (id === undefined) { id = vx.length; vmap.set(k, id); vx.push(x); vy.push(y); vz.push(z); }
+      tri[i] = id;
+    }
+    const V = vx.length;
+    // union-find for shells
+    const parent = new Int32Array(V); for (let i = 0; i < V; i++) parent[i] = i;
+    const find = a => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+    const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+    // edges
+    const eCount = new Map(), eDir = new Map();
+    let degenerate = 0;
+    const triOk = new Uint8Array(T);
+    for (let t = 0; t < T; t++) {
+      const a = tri[t * 3], b = tri[t * 3 + 1], c = tri[t * 3 + 2];
+      if (a === b || b === c || a === c) { degenerate++; continue; }
+      triOk[t] = 1;
+      union(a, b); union(a, c);
+      const es = [a, b, b, c, c, a];
+      for (let j = 0; j < 6; j += 2) {
+        const p = es[j], q = es[j + 1];
+        const key = p < q ? p * V + q : q * V + p;
+        eCount.set(key, (eCount.get(key) || 0) + 1);
+        eDir.set(key, (eDir.get(key) || 0) + (p < q ? 1 : -1));
+      }
+    }
+    let boundary = 0, nonManifold = 0, flipped = 0;
+    const bSegs = [];
+    for (const [key, cnt] of eCount) {
+      if (cnt === 1) {
+        boundary++;
+        if (bSegs.length < 60000) { const p = Math.floor(key / V), q = key - p * V; bSegs.push(vx[p], vy[p], vz[p], vx[q], vy[q], vz[q]); }
+      } else if (cnt > 2) nonManifold++;
+      else if (eDir.get(key) !== 0) flipped++;
+    }
+    // components
+    const rootIdx = new Map(); const compOfVert = new Int32Array(V);
+    for (let i = 0; i < V; i++) { const r = find(i); let ci = rootIdx.get(r); if (ci === undefined) { ci = rootIdx.size; rootIdx.set(r, ci); } compOfVert[i] = ci; }
+    const C = rootIdx.size;
+    const comps = Array.from({ length: C }, () => ({ tris: 0, vol: 0, area: 0, min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }));
+    for (let i = 0; i < V; i++) {
+      const c = comps[compOfVert[i]];
+      if (vx[i] < c.min[0]) c.min[0] = vx[i]; if (vx[i] > c.max[0]) c.max[0] = vx[i];
+      if (vy[i] < c.min[1]) c.min[1] = vy[i]; if (vy[i] > c.max[1]) c.max[1] = vy[i];
+      if (vz[i] < c.min[2]) c.min[2] = vz[i]; if (vz[i] > c.max[2]) c.max[2] = vz[i];
+    }
+    const flags = new Uint8Array(T);
+    const bedTol = 0.2;
+    let volume = 0, area = 0, cx = 0, cy = 0, cz = 0, bedArea = 0, ovArea = 0, ovH = 0, ceilArea = 0;
+    const triComp = new Int32Array(T).fill(-1);
+    for (let t = 0; t < T; t++) {
+      if (!triOk[t]) continue;
+      const o = t * 9;
+      const ax = pos[o], ay = pos[o + 1], az = pos[o + 2], bx = pos[o + 3], by = pos[o + 4], bz = pos[o + 5], qx = pos[o + 6], qy = pos[o + 7], qz = pos[o + 8];
+      const ux = bx - ax, uy = by - ay, uz = bz - az, wx = qx - ax, wy = qy - ay, wz = qz - az;
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const nl = Math.hypot(nx, ny, nz);
+      const A = nl / 2;
+      const ci = compOfVert[tri[t * 3]]; triComp[t] = ci;
+      const c = comps[ci]; c.tris++; c.area += A; area += A;
+      const v6 = (ax * (by * qz - bz * qy) - ay * (bx * qz - bz * qx) + az * (bx * qy - by * qx)) / 6;
+      c.vol += v6; volume += v6;
+      cx += v6 * (ax + bx + qx) / 4; cy += v6 * (ay + by + qy) / 4; cz += v6 * (az + bz + qz) / 4;
+    }
+    const nSgn = volume < 0 ? -1 : 1;
+    for (let t = 0; t < T; t++) {
+      if (!triOk[t]) continue;
+      const o = t * 9;
+      const ax = pos[o], ay = pos[o + 1], az = pos[o + 2], bx = pos[o + 3], by = pos[o + 4], bz = pos[o + 5], qx = pos[o + 6], qy = pos[o + 7], qz = pos[o + 8];
+      const ux = bx - ax, uy = by - ay, uz = bz - az, wx = qx - ax, wy = qy - ay, wz = qz - az;
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const nl = Math.hypot(nx, ny, nz), A = nl / 2;
+      if (nl < 1e-12) continue;
+      const nzn = nSgn * nz / nl;
+      const tMax = Math.max(az, bz, qz), tMin = Math.min(az, bz, qz);
+      if (tMax <= minZ + bedTol && nzn < -0.9) { flags[t] |= 1; bedArea += A; }
+      else if (nzn < -0.7071 && tMin > minZ + bedTol) {
+        flags[t] |= 2; ovArea += A; ovH += A * ((az + bz + qz) / 3 - minZ);
+        if (nzn < -0.97) ceilArea += A;
+      }
+    }
+    const inverted = volume < 0;
+    const sgn = inverted ? -1 : 1;
+    let com;
+    if (Math.abs(volume) > 1e-9) com = [cx / volume, cy / volume, cz / volume];
+    else com = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+    // shells vs cavities
+    const shells = [], cavities = [];
+    comps.forEach((c, i) => { c.i = i; if (c.tris === 0) return; (c.vol * sgn >= 0 ? shells : cavities).push(c); });
+    // pair relations among shells via vertex grid
+    const pairs = [];
+    const relate = new Map(); // pair key -> min distance (mm)
+    const inside = new Set(); // pair keys where one shell pokes into the other
+    const isShell = new Uint8Array(C); shells.forEach(c => isShell[c.i] = 1);
+    if (shells.length > 1 && shells.length <= 300) {
+      // triangle grid: each triangle registered in every cell its (expanded) bbox touches
+      const R = 0.8, G = 2.0, gInv = 1 / G;
+      const grid = new Map();
+      let budget = 4e6;
+      for (let t = 0; t < T && budget > 0; t++) {
+        const ci = triComp[t]; if (ci < 0 || !isShell[ci]) continue;
+        const o = t * 9;
+        const x0 = Math.floor((Math.min(pos[o], pos[o + 3], pos[o + 6]) - R) * gInv), x1 = Math.floor((Math.max(pos[o], pos[o + 3], pos[o + 6]) + R) * gInv);
+        const y0 = Math.floor((Math.min(pos[o + 1], pos[o + 4], pos[o + 7]) - R) * gInv), y1 = Math.floor((Math.max(pos[o + 1], pos[o + 4], pos[o + 7]) + R) * gInv);
+        const z0 = Math.floor((Math.min(pos[o + 2], pos[o + 5], pos[o + 8]) - R) * gInv), z1 = Math.floor((Math.max(pos[o + 2], pos[o + 5], pos[o + 8]) + R) * gInv);
+        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
+          const k = x + "," + y + "," + z; let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(t); budget--;
+        }
+      }
+      const step = V > 200000 ? Math.ceil(V / 200000) : 1;
+      for (let i = 0; i < V; i += step) {
+        const ci = compOfVert[i]; if (!isShell[ci]) continue;
+        const a = grid.get(Math.floor(vx[i] * gInv) + "," + Math.floor(vy[i] * gInv) + "," + Math.floor(vz[i] * gInv)); if (!a) continue;
+        for (const t of a) {
+          const cj = triComp[t]; if (cj === ci) continue;
+          const lo = Math.min(ci, cj), hi = Math.max(ci, cj), key = lo * C + hi;
+          const prev = relate.get(key);
+          if (prev !== undefined && prev < 0.005) continue;
+          let d = ptTri(vx[i], vy[i], vz[i], pos, t * 9);
+          if (d >= R) continue;
+          if (d > 0.005) { // which side of that face is the point on?
+            const o = t * 9;
+            const ux = pos[o + 3] - pos[o], uy = pos[o + 4] - pos[o + 1], uz = pos[o + 5] - pos[o + 2];
+            const wx = pos[o + 6] - pos[o], wy = pos[o + 7] - pos[o + 1], wz = pos[o + 8] - pos[o + 2];
+            const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+            const s = nSgn * (nx * (vx[i] - pos[o]) + ny * (vy[i] - pos[o + 1]) + nz * (vz[i] - pos[o + 2]));
+            const nl = Math.hypot(nx, ny, nz) || 1;
+            if (s / nl < -0.005) { inside.add(key); d = 0; }
+          }
+          if (prev === undefined || d < prev) relate.set(key, d);
+        }
+      }
+      // bbox overlap → intersecting shells
+      for (let a = 0; a < shells.length; a++) for (let b = a + 1; b < shells.length; b++) {
+        const A = shells[a], B = shells[b];
+        let ov = Infinity;
+        for (let k = 0; k < 3; k++) ov = Math.min(ov, Math.min(A.max[k], B.max[k]) - Math.max(A.min[k], B.min[k]));
+        const i1 = Math.min(A.i, B.i), i2 = Math.max(A.i, B.i);
+        const d = relate.get(i1 * C + i2);
+        if (inside.has(i1 * C + i2)) pairs.push({ a: i1, b: i2, kind: "overlap", d: 0 });
+        else if (d !== undefined && d >= 0.01) pairs.push({ a: i1, b: i2, kind: "gap", d });
+        else if (ov > 0.2) pairs.push({ a: i1, b: i2, kind: "overlap", d: 0 });
+        else if (d !== undefined) pairs.push({ a: i1, b: i2, kind: "touch", d });
+      }
+    }
+    // grounding
+    const grounded = new Uint8Array(C);
+    const queue = [];
+    shells.forEach(c => { if (c.min[2] <= minZ + 0.3) { grounded[c.i] = 1; queue.push(c.i); } });
+    const adj = new Map();
+    pairs.forEach(p => { if (p.kind === "gap") return; (adj.get(p.a) || adj.set(p.a, []).get(p.a)).push(p.b); (adj.get(p.b) || adj.set(p.b, []).get(p.b)).push(p.a); });
+    while (queue.length) { const c = queue.pop(); for (const n of (adj.get(c) || [])) if (!grounded[n]) { grounded[n] = 1; queue.push(n); } }
+    const floating = shells.filter(c => !grounded[c.i]);
+    const floatSet = new Set(floating.map(c => c.i));
+    if (floatSet.size) for (let t = 0; t < T; t++) if (floatSet.has(triComp[t])) flags[t] |= 4;
+    // base hull & stability
+    const basePts = [];
+    for (let i = 0; i < V; i++) if (vz[i] <= minZ + bedTol) basePts.push([vx[i], vy[i]]);
+    let hull = hull2(basePts);
+    // ensure CCW
+    let sa = 0; for (let i = 0; i < hull.length; i++) { const a = hull[i], b = hull[(i + 1) % hull.length]; sa += a[0] * b[1] - b[0] * a[1]; }
+    if (sa < 0) hull = hull.reverse();
+    const hullArea = Math.abs(sa) / 2;
+    const margin = insideMargin(hull, com[0], com[1]);
+    const comH = Math.max(1e-6, com[2] - minZ);
+    const tipAngle = isFinite(margin) ? Math.atan2(margin, comH) * 180 / Math.PI : -90;
+    const baseWidth = 2 * Math.sqrt(Math.max(hullArea, 1e-6) / Math.PI);
+    let minWall = Infinity; shells.forEach(c => { for (let k = 0; k < 3; k++) minWall = Math.min(minWall, c.max[k] - c.min[k]); });
+    return {
+      tris: T, verts: V, dims, min: [minX, minY, minZ], max: [maxX, maxY, maxZ],
+      volume: Math.abs(volume), area, inverted, com,
+      boundary, nonManifold, flipped, degenerate,
+      shells: shells.length, cavities: cavities.length, floating: floating.length,
+      floatingVol: floating.reduce((s, c) => s + Math.abs(c.vol), 0),
+      pairs, touch: pairs.filter(p => p.kind === "touch").length,
+      gaps: pairs.filter(p => p.kind === "gap").map(p => p.d).sort((a, b) => a - b),
+      overlaps: pairs.filter(p => p.kind === "overlap").length,
+      bedArea, hullArea, tipAngle, baseWidth, comHeight: comH,
+      overhangArea: ovArea, overhangAvgH: ovArea ? ovH / ovArea : 0, ceilArea, minFeature: minWall,
+      flags, boundarySegs: new Float32Array(bSegs),
+    };
+  }
+
+  // printers: [{name,x,y,z,online}]
+  function fitCheck(dims, printers) {
+    const live = printers.filter(p => p.online !== false);
+    const list = live.length ? live : printers;
+    let asIs = [], rotated = [];
+    for (const p of list) {
+      const [x, y, z] = dims;
+      if (z <= p.z && ((x <= p.x && y <= p.y) || (y <= p.x && x <= p.y))) asIs.push(p);
+      else {
+        const d = dims.slice().sort((a, b) => a - b), b = [p.x, p.y, p.z].sort((a, b) => a - b);
+        if (d[0] <= b[0] && d[1] <= b[1] && d[2] <= b[2]) rotated.push(p);
+      }
+    }
+    return { asIs, rotated };
+  }
+
+  const f1 = n => (Math.round(n * 10) / 10).toLocaleString();
+  function buildIssues(m, printers) {
+    const out = [];
+    const add = (sev, code, title, detail, fix) => out.push({ sev, code, title, detail, fix });
+    const maxDim = Math.max(...m.dims);
+    if (maxDim < 3) add("error", "units", "Model is tiny — probably the wrong units",
+      `It measures ${m.dims.map(f1).join(" × ")} mm. At that size it would print as a speck.`,
+      `If you modeled in centimeters, scale by <b>10</b>; in inches, scale by <b>25.4</b>. Re-export in millimeters.`);
+    else if (maxDim > 2000) add("error", "units", "Model is huge — probably the wrong units",
+      `It measures ${m.dims.map(f1).join(" × ")} mm (over 2 m).`, `If you modeled in micrometers or exported at the wrong scale, scale it down and re-export in millimeters.`);
+    const fit = fitCheck(m.dims, printers);
+    if (!fit.asIs.length && !fit.rotated.length && maxDim <= 2000) add("error", "size", "Too big for our printers",
+      `${m.dims.map(f1).join(" × ")} mm won't fit on any printer (largest: ${printers.map(p => `${p.x}×${p.y}×${p.z}`).sort().pop()} mm).`,
+      `Scale it down, or split it into parts that you glue after printing.`);
+    else if (!fit.asIs.length && fit.rotated.length) add("warn", "size", "Only fits if it's turned on its side",
+      `In this orientation it's taller or wider than the build plate.`, `Rotate it in your design software so its longest side lies flat, then re-export.`);
+    if (m.boundary > 0) add("error", "holes", "Holes in the surface",
+      `${m.boundary.toLocaleString()} open edges. The model isn't a closed solid, so the slicer has to guess what's inside. Red lines in the preview mark the openings.`,
+      `Make sure every face connects. In Tinkercad, group the shapes; in Fusion or Onshape, export a <b>body</b> (not a surface). Mesh tools like "Make solid" or "Repair" can close small holes.`);
+    if (m.nonManifold > 0) add("warn", "nonmanifold", "Edges shared by more than two faces",
+      `${m.nonManifold.toLocaleString()} edges are connected to 3 or more faces (often two shapes touching along one edge). Slicers can misread these.`,
+      `Overlap the shapes slightly so they share volume, not just an edge, and combine them into one body.`);
+    if (m.inverted) add("warn", "inverted", "The model is inside-out",
+      `Its surface normals point inward. Most slicers fix this automatically, but it's a sign the export went wrong.`, `Flip normals in your mesh tool, or re-export from your design software.`);
+    else if (m.flipped > 0 && m.boundary === 0) add("warn", "flipped", "Some faces point the wrong way",
+      `${m.flipped.toLocaleString()} edges join faces facing opposite directions.`, `Run "Repair" or "Make normals consistent" in your mesh tool.`);
+    if (m.degenerate > 50) add("info", "degenerate", "Some zero-size triangles",
+      `${m.degenerate.toLocaleString()} triangles have no area. Usually harmless.`, `No action needed unless other problems show up.`);
+    if (m.floating > 0) add("error", "floating", m.floating === 1 ? "A part is floating in the air" : `${m.floating} parts are floating in the air`,
+      `These pieces don't touch the bed or any part that does. The printer would start them on thin air and they'd turn into spaghetti. They're red in the preview.`,
+      `Move them down so they rest on the model, or overlap them into the part below by about <b>0.5 mm</b> and combine. If the gap is on purpose, ask your teacher about supports.`);
+    if (m.gaps.length) add("warn", "gap", m.gaps.length === 1 ? "Two parts almost touch" : `${m.gaps.length} places where parts almost touch`,
+      `The closest gap is <b>${m.gaps[0].toFixed(2)} mm</b>. Gaps under 0.8 mm are too small to print cleanly: parts may fuse together or print as loose pieces.`,
+      `If they should be one piece, overlap them by <b>0.5 mm</b> or more. If they should move (a hinge or chain), widen the gap to at least <b>0.5–0.8 mm</b> on purpose.`);
+    if (m.touch) add("warn", "touch", "Parts touch but aren't joined",
+      `${m.touch} pair${m.touch > 1 ? "s" : ""} of shapes meet at a face, edge or point without being merged. That joint will be weak or may not print at all.`,
+      `Push the shapes into each other a little (about <b>0.5 mm</b>) and group or union them before exporting.`);
+    if (m.overlaps) add("info", "overlap", "Overlapping shapes",
+      `${m.shells} separate shapes overlap each other. Slicers usually merge these fine.`, `Optional: union them into one body for the cleanest result.`);
+    if (m.cavities) add("info", "cavity", "Hollow space inside",
+      `${m.cavities} sealed hollow space${m.cavities > 1 ? "s" : ""} inside the model.`, `Fine if that's on purpose. The slicer will print around it.`);
+    // stability
+    const h = m.dims[2];
+    if (m.bedArea < 1) add("error", "contact", "Touches the bed at a point or edge",
+      `Only ${f1(m.bedArea)} mm² sits flat on the build plate. It will pop off or wobble as it prints.`,
+      `Add a flat bottom: slice a little off the base, add a flat base plate, or rotate it so a flat face is down.`);
+    else if (m.bedArea < 25) add("warn", "contact", "Very small footprint on the bed",
+      `Only ${f1(m.bedArea)} mm² touches the build plate, which may not hold.`, `Rotate so a larger flat face is down, add a base, or ask for a brim.`);
+    if (m.bedArea >= 1 && h > 10) {
+      if (m.tipAngle < 0) add("warn", "tip", "Center of mass is outside the base",
+        `The model leans past its own footprint. It's held on only by bed adhesion and the nozzle can knock it off.`,
+        `Lay it on its side or back, widen the base, or plan for supports.`);
+      else if (m.tipAngle < 10) add("warn", "tip", "Tall and tippy",
+        `It would tip at about <b>${f1(m.tipAngle)}°</b> of lean (the base is ${f1(m.baseWidth)} mm wide; the center of mass is ${f1(m.comHeight)} mm up). The nozzle can knock it loose late in the print.`,
+        `Lay it on its side, add a wider foot, or ask for a brim.`);
+    }
+    // overhangs
+    const ovPct = m.area ? m.overhangArea / m.area * 100 : 0;
+    if (ovPct > 20) add("warn", "overhang", "Lots of steep overhangs",
+      `${f1(ovPct)}% of the surface faces downward at more than 45°. Those spots need supports, which add time and leave rough marks. Orange in the preview.`,
+      `Rotate the model so it builds upward without big ledges, add 45° chamfers under ledges, or split it into pieces.`);
+    else if (ovPct > 5) add("info", "overhang", "Some overhangs will need supports",
+      `${f1(ovPct)}% of the surface overhangs past 45° (orange in the preview).`, `Expect supports in those spots. Chamfering ledges to 45° can avoid them.`);
+    if (m.minFeature < 0.8 && maxDim >= 3) add("warn", "thin", "Very thin part",
+      `At least one piece is only ${m.minFeature.toFixed(2)} mm thick. Our 0.4 mm nozzle needs about 0.8 mm to print a solid wall.`, `Thicken it to <b>0.8 mm</b> or more (1.2 mm is safer).`);
+    if (m.tris > 1500000) add("info", "heavy", "Very detailed mesh",
+      `${m.tris.toLocaleString()} triangles. It's fine for printing but slow to load.`, `Export at a lower resolution if your tool offers it.`);
+    const rank = { error: 0, warn: 1, info: 2 };
+    out.sort((a, b) => rank[a.sev] - rank[b.sev]);
+    return out;
+  }
+
+  function metrics(m) { // compact storable subset
+    const r = x => Math.round(x * 100) / 100;
+    return { dims: m.dims.map(r), volume: r(m.volume), area: r(m.area), tris: m.tris, shells: m.shells,
+      overhangArea: r(m.overhangArea), overhangAvgH: r(m.overhangAvgH), floatingVol: r(m.floatingVol),
+      bedArea: r(m.bedArea), tipAngle: r(m.tipAngle), watertight: m.boundary === 0 };
+  }
+
+  function estimate(mt, est, calib = 1) {
+    const vol = mt.volume > 0 ? mt.volume : mt.dims[0] * mt.dims[1] * mt.dims[2] * 0.25;
+    const shell = Math.min(vol, mt.area * est.wallMm);
+    const material = shell + Math.max(0, vol - shell) * est.infill;
+    const support = mt.overhangArea * mt.overhangAvgH * 0.12 + mt.floatingVol * 0.3;
+    const total = material + support;
+    const layers = Math.ceil(mt.dims[2] / est.layerH);
+    const sec = (total / est.flow * est.overhead + layers * 2 + est.heatup * 60) * calib;
+    return { seconds: sec, grams: total / 1000 * est.density, layers, mm3: total };
+  }
+
+  function priority(job, ctx) {
+    const w = ctx.weights, now = ctx.now;
+    const printH = job._est.seconds * (job.qty || 1) / 3600;
+    const grams = job._est.grams * (job.qty || 1);
+    let u = 0.05, slackH = null;
+    if (job.dueAt) { slackH = (job.dueAt - now) / 3.6e6 - printH; u = slackH <= 0 ? 1 : 1 / (1 + slackH / 24); }
+    const s = 1 / (1 + printH / 2);
+    const f = 1 / (1 + grams / 50);
+    const waitD = Math.max(0, (now - (job.submittedAt || now)) / 8.64e7);
+    const wt = Math.min(1, waitD / 7);
+    const warns = (job.issues || []).filter(i => i.sev === "warn").length;
+    const errs = (job.issues || []).filter(i => i.sev === "error").length;
+    const q = Math.max(0, 1 - warns * 0.15 - errs * 0.4);
+    const sum = (w.due + w.short + w.filament + w.wait + w.quality) || 1;
+    const parts = { due: w.due * u, short: w.short * s, filament: w.filament * f, wait: w.wait * wt, quality: w.quality * q };
+    let score = 100 * (parts.due + parts.short + parts.filament + parts.wait + parts.quality) / sum;
+    const base = score;
+    if (job.urgent) score += w.urgent;
+    return { score, base, parts: Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, 100 * v / sum])), slackH, printH, grams };
+  }
+
+  // returns map jobId -> {printer, start, end, late}
+  function schedule(jobs, printers, now) {
+    const free = {};
+    printers.forEach(p => free[p.id] = now);
+    jobs.filter(j => j.status === "printing" && j.printerId && free[j.printerId] !== undefined).forEach(j => {
+      const end = Math.max(now + 5 * 60000, (j.startedAt || now) + j._est.seconds * (j.qty || 1) * 1000);
+      free[j.printerId] = Math.max(free[j.printerId], end);
+    });
+    const out = {};
+    const queued = jobs.filter(j => j.status === "queued").sort((a, b) => b._pr.score - a._pr.score);
+    for (const j of queued) {
+      const fit = fitCheck(j.metrics.dims, printers);
+      const ok = new Set([...fit.asIs, ...fit.rotated].map(p => p.id));
+      const cands = printers.filter(p => p.online !== false && ok.has(p.id));
+      if (!cands.length) { out[j.id] = { printer: null }; continue; }
+      cands.sort((a, b) => free[a.id] - free[b.id]);
+      const p = cands[0];
+      const start = free[p.id], end = start + j._est.seconds * (j.qty || 1) * 1000;
+      free[p.id] = end;
+      out[j.id] = { printer: p, start, end, late: j.dueAt ? end > j.dueAt : false };
+    }
+    return { slots: out, free };
+  }
+
+  return { parseSTL, analyze, buildIssues, metrics, estimate, priority, schedule, fitCheck };
+})();
+// ==ANALYZER END==
+
+/* ---------- 3D viewer ---------- */
+const Viewer = (() => {
+  let renderer, scene, camera, group, cv, ok = false;
+  const st = { theta: -0.9, phi: 1.05, dist: 200, target: null, size: 100 };
+  let showIssues = true, last = null;
+  function init(canvas) {
+    cv = canvas;
+    if (!window.THREE) return false;
+    try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: true }); }
+    catch (e) { return false; }
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(35, 4 / 3, 0.1, 20000);
+    camera.up.set(0, 0, 1);
+    st.target = new THREE.Vector3();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.75));
+    const d1 = new THREE.DirectionalLight(0xffffff, 0.65); d1.position.set(1, -1.5, 2); scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0xffffff, 0.25); d2.position.set(-1, 1, 0.5); scene.add(d2);
+    let drag = null;
+    canvas.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing"; });
+    canvas.addEventListener("pointermove", e => { if (!drag) return; st.theta -= (e.clientX - drag.x) * 0.01; st.phi = Math.min(3.0, Math.max(0.08, st.phi - (e.clientY - drag.y) * 0.01)); drag = { x: e.clientX, y: e.clientY }; draw(); });
+    const end = () => { drag = null; canvas.style.cursor = ""; };
+    canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+    canvas.addEventListener("wheel", e => { e.preventDefault(); st.dist *= Math.pow(1.0015, e.deltaY); st.dist = Math.max(st.size * 0.3, Math.min(st.size * 12, st.dist)); draw(); }, { passive: false });
+    new ResizeObserver(resize).observe(canvas.parentElement);
+    resize(); ok = true; return true;
+  }
+  function resize() {
+    if (!renderer) return;
+    const r = cv.parentElement.getBoundingClientRect();
+    renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix(); draw();
+  }
+  function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function show(pos, m, bed) {
+    last = { pos, m, bed };
+    if (!ok) return;
+    if (group) { scene.remove(group); group.traverse(o => { o.geometry && o.geometry.dispose(); o.material && o.material.dispose(); }); }
+    group = new THREE.Group();
+    const ox = -(m.min[0] + m.max[0]) / 2, oy = -(m.min[1] + m.max[1]) / 2, oz = -m.min[2];
+    const g = new THREE.BufferGeometry();
+    const p = new Float32Array(pos.length);
+    for (let i = 0; i < pos.length; i += 3) { p[i] = pos[i] + ox; p[i + 1] = pos[i + 1] + oy; p[i + 2] = pos[i + 2] + oz; }
+    g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+    const col = new Float32Array(pos.length);
+    const base = [0.62, 0.70, 0.76], bedC = [0.25, 0.64, 0.30], ovC = [0.91, 0.63, 0.23], flC = [0.90, 0.28, 0.30];
+    for (let t = 0; t < m.tris; t++) {
+      const f = m.flags[t];
+      const c = !showIssues ? base : (f & 4) ? flC : (f & 1) ? bedC : (f & 2) ? ovC : base;
+      for (let k = 0; k < 3; k++) { col[t * 9 + k * 3] = c[0]; col[t * 9 + k * 3 + 1] = c[1]; col[t * 9 + k * 3 + 2] = c[2]; }
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    group.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.05, side: THREE.DoubleSide, flatShading: true })));
+    if (showIssues && m.boundarySegs.length) {
+      const s = m.boundarySegs.slice();
+      for (let i = 0; i < s.length; i += 3) { s[i] += ox; s[i + 1] += oy; s[i + 2] += oz; }
+      const lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.BufferAttribute(s, 3));
+      group.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0xe5484d })));
+    }
+    // build plate
+    const bx = bed ? bed.x : 220, by = bed ? bed.y : 220;
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(bx, by), new THREE.MeshBasicMaterial({ color: new THREE.Color(cssVar("--line") || "#cccccc"), transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
+    plate.position.z = -0.05; group.add(plate);
+    const step = 10, lines = [];
+    for (let x = -bx / 2; x <= bx / 2 + 1e-6; x += step) lines.push(x, -by / 2, 0, x, by / 2, 0);
+    for (let y = -by / 2; y <= by / 2 + 1e-6; y += step) lines.push(-bx / 2, y, 0, bx / 2, y, 0);
+    const gg = new THREE.BufferGeometry(); gg.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+    group.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: new THREE.Color(cssVar("--muted") || "#888"), transparent: true, opacity: 0.25 })));
+    scene.add(group);
+    st.size = Math.max(...m.dims, 10);
+    st.target.set(0, 0, m.dims[2] / 2);
+    st.dist = st.size * 2.6;
+    draw();
+  }
+  function draw() {
+    if (!ok) return;
+    camera.position.set(
+      st.target.x + st.dist * Math.sin(st.phi) * Math.cos(st.theta),
+      st.target.y + st.dist * Math.sin(st.phi) * Math.sin(st.theta),
+      st.target.z + st.dist * Math.cos(st.phi));
+    camera.lookAt(st.target);
+    renderer.render(scene, camera);
+  }
+  function reset() { st.theta = -0.9; st.phi = 1.05; if (last) st.dist = st.size * 2.6; draw(); }
+  function toggleIssues() { showIssues = !showIssues; if (last) show(last.pos, last.m, last.bed); return showIssues; }
+  function thumb(w = 160, h = 120) {
+    if (!ok) return "";
+    draw();
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const x = c.getContext("2d");
+    x.fillStyle = cssVar("--sunk") || "#e3e9ec"; x.fillRect(0, 0, w, h);
+    const s = cv.width / cv.height, sw = s > w / h ? cv.height * w / h : cv.width, sh = sw * h / w;
+    x.drawImage(cv, (cv.width - sw) / 2, (cv.height - sh) / 2, sw, sh, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.72);
+  }
+  function blob() { return new Promise(res => { if (!ok) return res(null); draw(); cv.toBlob(b => res(b), "image/png"); }); }
+  return { init, show, reset, toggleIssues, thumb, blob, redraw: () => last && show(last.pos, last.m, last.bed) };
+})();
+
+/* ---------- app state ---------- */
+const DEFAULTS = {
+  printers: [
+    { id: "p1", name: "Printer 1", x: 220, y: 220, z: 250, online: true },
+    { id: "p2", name: "Printer 2", x: 220, y: 220, z: 250, online: true },
+  ],
+  est: { layerH: 0.2, infill: 0.2, wallMm: 1.2, flow: 6, density: 1.24, overhead: 1.25, heatup: 5 },
+  weights: { due: 40, short: 20, filament: 10, wait: 15, quality: 15, urgent: 50 },
+};
+const S = { signedIn: false, me: null, canEdit: false,
+  jobs: [], config: structuredClone(DEFAULTS), draft: null, open: null, tFilter: "active", view: "submit", sched: { slots: {}, free: {} } };
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDur = sec => { const m = Math.round(sec / 60); if (m < 60) return m + "m"; const h = Math.floor(m / 60); return h + "h " + String(m % 60).padStart(2, "0") + "m"; };
+const fmtWhen = ms => { if (!ms) return "—"; const d = new Date(ms), now = new Date(); const sameDay = d.toDateString() === now.toDateString();
+  const tom = new Date(now); tom.setDate(now.getDate() + 1);
+  const t = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (sameDay) return "Today " + t; if (d.toDateString() === tom.toDateString()) return "Tomorrow " + t;
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + " " + t; };
+const STATUS = { queued: "In queue", printing: "Printing", done: "Printed", needs_fix: "Needs fix", cancelled: "Cancelled", failed: "Failed" };
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4000); }
+const MAX_UPLOAD_MB = 30;
+
+function calibration() {
+  const done = S.jobs.filter(j => j.status === "done" && j.actualMin > 0 && j.metrics);
+  if (done.length < 2) return { f: 1, n: done.length };
+  const r = done.map(j => (j.actualMin * 60) / (Analyzer.estimate(j.metrics, S.config.est, 1).seconds * (j.qty || 1))).sort((a, b) => a - b);
+  const f = r[Math.floor(r.length / 2)];
+  return { f: Math.min(4, Math.max(0.25, f)), n: done.length };
+}
+function recompute() {
+  const now = Date.now(), cal = calibration();
+  for (const j of S.jobs) {
+    if (!j.metrics) continue;
+    j._est = Analyzer.estimate(j.metrics, S.config.est, cal.f);
+    j._pr = Analyzer.priority(j, { weights: S.config.weights, now });
+  }
+  S.sched = Analyzer.schedule(S.jobs.filter(j => j._est), S.config.printers, now);
+  S.cal = cal;
+}
+
+/* ---------- server connection ---------- */
+const CFG = window.CONFIG || {};
+const configured = () => CFG.SCRIPT_URL && !/PASTE/.test(CFG.SCRIPT_URL) && CFG.GOOGLE_CLIENT_ID && !/PASTE/.test(CFG.GOOGLE_CLIENT_ID);
+
+const Auth = (() => {
+  let token = null, exp = 0, profile = null, ready = false;
+  try { const s = JSON.parse(sessionStorage.getItem("pq-auth") || "null"); if (s && s.exp * 1000 > Date.now() + 120000) { token = s.token; exp = s.exp; profile = s.profile; } } catch (e) {}
+  function decode(t) { const p = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(decodeURIComponent(escape(atob(p)))); }
+  function onCredential(resp) {
+    token = resp.credential;
+    try { const c = decode(token); exp = c.exp; profile = { email: c.email, name: c.name || c.email }; } catch (e) { exp = Date.now() / 1000 + 3000; }
+    try { sessionStorage.setItem("pq-auth", JSON.stringify({ token, exp, profile })); } catch (e) {}
+    onSignedIn();
+  }
+  function init() {
+    if (ready) return true;
+    if (!window.google || !google.accounts || !google.accounts.id) return false;
+    const opts = { client_id: CFG.GOOGLE_CLIENT_ID, callback: onCredential, auto_select: true, cancel_on_tap_outside: false };
+    if (CFG.ALLOWED_DOMAIN) opts.hd = CFG.ALLOWED_DOMAIN;
+    google.accounts.id.initialize(opts);
+    ready = true; return true;
+  }
+  function button(el) { if (!init()) return; el.innerHTML = ""; google.accounts.id.renderButton(el, { theme: "outline", size: "medium", text: "signin_with", shape: "pill" }); }
+  function prompt() { if (init()) { try { google.accounts.id.prompt(); } catch (e) {} } }
+  function clear() { token = null; exp = 0; profile = null; try { sessionStorage.removeItem("pq-auth"); } catch (e) {} }
+  function signOut() { clear(); try { google.accounts.id.disableAutoSelect(); } catch (e) {} }
+  return { init, button, prompt, signOut, clear, valid: () => !!token && exp * 1000 > Date.now() + 30000, get token() { return token; }, get profile() { return profile; }, get expiresAt() { return exp * 1000; } };
+})();
+
+const API = {
+  async call(action, body = {}) {
+    if (!configured()) throw new Error("This site isn't connected to its Google Apps Script yet. See step 5 in the setup guide.");
+    if (!Auth.valid()) { setSignedOut("Your sign-in expired. Sign in again to keep going."); throw Object.assign(new Error("Your sign-in expired. Sign in again."), { code: "auth" }); }
+    let res;
+    try { res = await fetch(CFG.SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, token: Auth.token, ...body }) }); }
+    catch (e) { throw new Error("Couldn't reach the print queue server. Check your internet connection and try again."); }
+    let data;
+    try { data = await res.json(); }
+    catch (e) { throw new Error("The server sent back something unexpected. Check that the Apps Script is deployed with access set to \"Anyone\"."); }
+    if (!data.ok) {
+      const err = new Error(data.error || "Something went wrong on the server."); err.code = data.code;
+      if (data.code === "auth" || data.code === "domain") { Auth.clear(); setSignedOut(data.error); }
+      throw err;
+    }
+    if (data.config) applyConfig(data.config);
+    if (data.jobs) { S.jobs = data.jobs; render(); }
+    return data;
+  },
+};
+
+function setSignedOut(msg) {
+  S.signedIn = false; S.me = null; S.canEdit = false; S.jobs = [];
+  $("#teacherTab").hidden = true;
+  if (S.view === "teacher") setView("queue");
+  renderAuth();
+  showBanner(msg || `Sign in with your ${CFG.ALLOWED_DOMAIN ? "@" + CFG.ALLOWED_DOMAIN + " " : ""}Google account to submit models and see the queue. Model checks work without signing in.`);
+  render();
+}
+async function onSignedIn() {
+  try {
+    const r = await API.call("me");
+    S.signedIn = true; S.me = r.me; S.canEdit = !!r.me.isTeacher;
+    $("#teacherTab").hidden = !S.canEdit;
+    $("#connBanner").hidden = true;
+    renderAuth();
+    const h = (location.hash || "").slice(1);
+    if (h === "teacher" && S.canEdit) setView("teacher"); else render();
+    if (S.draft) renderReport();
+  } catch (e) { console.warn(e); if (e.code !== "auth" && e.code !== "domain") showBanner(e.message); }
+}
+function renderAuth() {
+  const box = $("#authBox");
+  if (S.signedIn && S.me) {
+    box.innerHTML = `<span class="who" title="${esc(S.me.email)}">${esc(S.me.name || S.me.email)}${S.canEdit ? ` <span class="pill" data-s="queued">Teacher</span>` : ""}</span><button class="btn small" id="btnSignOut" type="button">Sign out</button>`;
+    $("#btnSignOut").addEventListener("click", () => { Auth.signOut(); setSignedOut("You're signed out."); });
+  } else if (!configured()) {
+    box.innerHTML = `<span class="muted" style="font-size:13px">Not connected</span>`;
+  } else {
+    box.innerHTML = `<div id="gsiBtn"></div>`;
+    Auth.button($("#gsiBtn"));
+  }
+}
+// keep the queue fresh while the tab is visible
+setInterval(() => {
+  if (!S.signedIn || document.visibilityState !== "visible" || S.busy) return;
+  if (Auth.expiresAt - Date.now() < 5 * 60000) { Auth.prompt(); return; }
+  API.call("list").catch(e => console.warn(e));
+}, 20000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.signedIn && Auth.valid()) API.call("list").catch(() => {}); });
+
+/* ---------- views ---------- */
+function setView(v) {
+  if (v === "teacher" && !S.canEdit) v = "queue";
+  S.view = v;
+  document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v));
+  ["submit", "queue", "mine", "teacher"].forEach(k => $("#view-" + k).hidden = k !== v);
+  try { history.replaceState(null, "", "#" + v); } catch (e) {}
+  render();
+  if (v === "submit") setTimeout(() => Viewer.redraw(), 0);
+}
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+
+function render() {
+  recompute();
+  const active = S.jobs.filter(j => j.status === "queued" || j.status === "printing");
+  $("#qcount").textContent = active.length ? active.length : "";
+  const mine = S.jobs.filter(j => j.mine && j.status !== "cancelled");
+  $("#mcount").textContent = mine.length ? mine.length : "";
+  if (S.view === "queue") renderQueue();
+  if (S.view === "mine") renderMine();
+  if (S.view === "teacher") renderTeacher();
+  if (S.view === "submit" && S.draft) renderReport();
+}
+function signInPanel(what) {
+  return `<div class="panel empty-state"><h3>Sign in to ${what}</h3><p>Use the <b>Sign in with Google</b> button at the top of the page${CFG.ALLOWED_DOMAIN ? ` with your @${esc(CFG.ALLOWED_DOMAIN)} account` : ""}.</p></div>`;
+}
+
+/* ----- submit ----- */
+function defaultDue() { const d = new Date(Date.now() + 7 * 864e5); d.setHours(15, 0, 0, 0); return toLocalInput(d); }
+function toLocalInput(d) { const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
+$("#fDue").value = defaultDue();
+try { const saved = JSON.parse(localStorage.getItem("pq-student") || "{}"); if (saved.name) $("#fName").value = saved.name; if (saved.cls && [...$("#fClass").options].some(o => o.value === saved.cls)) $("#fClass").value = saved.cls; } catch (e) {}
+
+function loadBuffer(buf, name, isExample) {
+  let pos, m;
+  try { pos = Analyzer.parseSTL(buf); m = Analyzer.analyze(pos); }
+  catch (e) { toast(e.message || "Couldn't read that file."); return; }
+  const issues = Analyzer.buildIssues(m, S.config.printers);
+  S.draft = { pos, m, issues, name, buf, isExample, metrics: Analyzer.metrics(m) };
+  $("#exampleTag").hidden = !isExample;
+  const p = S.config.printers.find(p => p.online !== false) || S.config.printers[0];
+  Viewer.show(pos, m, p);
+  if (!$("#fProject").value && !isExample) $("#fProject").value = name.replace(/\.stl$/i, "").replace(/[_-]+/g, " ");
+  renderReport();
+}
+function renderReport() {
+  const d = S.draft; if (!d) return;
+  const est = Analyzer.estimate(d.metrics, S.config.est, (S.cal || { f: 1 }).f);
+  const q = Math.max(1, +$("#fQty").value || 1);
+  const [x, y, z] = d.m.dims;
+  $("#readout").innerHTML = `
+    <div><span class="label">Size (mm)</span><b title="${x.toFixed(1)} × ${y.toFixed(1)} × ${z.toFixed(1)}">${x.toFixed(0)}×${y.toFixed(0)}×${z.toFixed(0)}</b></div>
+    <div><span class="label">Print time</span><b>≈ ${fmtDur(est.seconds * q)}</b></div>
+    <div><span class="label">Filament</span><b>${(est.grams * q).toFixed(0)} g</b></div>
+    <div><span class="label">On the bed</span><b>${d.m.bedArea.toFixed(0)} mm²</b></div>`;
+  $("#gline").textContent = `; ${d.name} · ${d.m.tris.toLocaleString()} triangles · ${d.m.shells} shell${d.m.shells === 1 ? "" : "s"} · ${est.layers} layers @ ${S.config.est.layerH.toFixed(2)} mm · ${Math.round(S.config.est.infill * 100)}% infill${q > 1 ? ` · ${q} copies` : ""}${d.metrics.watertight ? "" : " · estimate is rough (open mesh)"}`;
+  const errs = d.issues.filter(i => i.sev === "error").length, warns = d.issues.filter(i => i.sev === "warn").length;
+  const v = $("#verdict"); v.hidden = false;
+  if (errs) { v.dataset.tone = "bad"; v.innerHTML = `${errs} problem${errs > 1 ? "s" : ""} to fix <span>This would likely fail. Fix and upload again, or send it to your teacher for review.</span>`; }
+  else if (warns) { v.dataset.tone = "warn"; v.innerHTML = `Printable, with ${warns} thing${warns > 1 ? "s" : ""} to check <span>Read the notes below before you submit.</span>`; }
+  else { v.dataset.tone = "ok"; v.innerHTML = `Ready to print <span>No problems found.</span>`; }
+  $("#issues").innerHTML = d.issues.length ? d.issues.map(i => `
+    <li class="issue" data-sev="${i.sev}"><div class="ih"><h3>${esc(i.title)}</h3><span class="sev" data-sev="${i.sev}">${{ error: "Fix", warn: "Check", info: "Note" }[i.sev]}</span></div>
+    <p>${i.detail}</p><p class="fix"><b>How to fix:</b> ${i.fix}</p></li>`).join("")
+    : `<li class="issue" data-sev="ok"><div class="ih"><h3>Closed, solid, sits flat</h3><span class="sev" data-sev="ok">Good</span></div><p>No holes, floating parts, gaps or stability problems found.</p></li>`;
+  const btn = $("#btnSubmit");
+  btn.textContent = errs ? "Send to teacher for review" : "Add to queue";
+  btn.disabled = !!d.isExample || !S.signedIn;
+  $("#submitHint").textContent = d.isExample ? "This is an example. Upload your own STL to submit."
+    : !S.signedIn ? "Sign in with Google (top of the page) to submit." : "";
+}
+$("#fQty").addEventListener("input", () => S.draft && renderReport());
+
+const drop = $("#drop"), fileIn = $("#file");
+drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileIn.click(); } });
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+fileIn.addEventListener("change", () => { const f = fileIn.files[0]; if (f) readFile(f); fileIn.value = ""; });
+function readFile(f) {
+  if (!/\.stl$/i.test(f.name)) { toast("That's not an STL. Export your model as .stl and try again."); return; }
+  if (f.size > MAX_UPLOAD_MB * 1024 * 1024) { toast(`That file is over ${MAX_UPLOAD_MB} MB. Export at a lower resolution and try again.`); return; }
+  $("#gline").textContent = "; analyzing " + f.name + " …";
+  f.arrayBuffer().then(buf => setTimeout(() => loadBuffer(buf, f.name, false), 20));
+}
+$("#btnExample").addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); loadExample(); });
+$("#btnReset").addEventListener("click", () => Viewer.reset());
+$("#btnIssues").addEventListener("click", e => e.currentTarget.setAttribute("aria-pressed", Viewer.toggleIssues()));
+
+function boxTris(a, x0, y0, z0, x1, y1, z1) {
+  const f = (p, q, r) => a.push(...p, ...q, ...r);
+  const c = (i, j, k) => [i ? x1 : x0, j ? y1 : y0, k ? z1 : z0];
+  f(c(0,0,0), c(0,1,0), c(1,1,0)); f(c(0,0,0), c(1,1,0), c(1,0,0));
+  f(c(0,0,1), c(1,0,1), c(1,1,1)); f(c(0,0,1), c(1,1,1), c(0,1,1));
+  f(c(0,0,0), c(1,0,0), c(1,0,1)); f(c(0,0,0), c(1,0,1), c(0,0,1));
+  f(c(0,1,0), c(0,1,1), c(1,1,1)); f(c(0,1,0), c(1,1,1), c(1,1,0));
+  f(c(0,0,0), c(0,0,1), c(0,1,1)); f(c(0,0,0), c(0,1,1), c(0,1,0));
+  f(c(1,0,0), c(1,1,0), c(1,1,1)); f(c(1,0,0), c(1,1,1), c(1,0,1));
+}
+function makeExampleSTL() {
+  // a "trophy": small foot, tall post, cap that hovers 0.3 mm above the post
+  const t = [];
+  boxTris(t, 0, 0, 0, 14, 14, 3);
+  boxTris(t, 4, 4, 3, 10, 10, 63);
+  boxTris(t, -1, -1, 63.3, 15, 15, 73);
+  const n = t.length / 9, buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+  dv.setUint32(80, n, true);
+  for (let i = 0; i < n; i++) for (let k = 0; k < 9; k++) dv.setFloat32(84 + i * 50 + 12 + k * 4, t[i * 9 + k], true);
+  return buf;
+}
+function loadExample() { loadBuffer(makeExampleSTL(), "example-trophy.stl", true); }
+
+$("#jobForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const d = S.draft; if (!d || d.isExample || !S.signedIn) return;
+  const name = $("#fName").value.trim(), project = $("#fProject").value.trim(), due = $("#fDue").value;
+  if (!name || !project || !due || !$("#fClass").value) { toast("Add your name, grade, project and the date you need it by."); return; }
+  if (d.buf.byteLength > MAX_UPLOAD_MB * 1048576) { toast(`That file is over ${MAX_UPLOAD_MB} MB. Export at a lower resolution and try again.`); return; }
+  try { localStorage.setItem("pq-student", JSON.stringify({ name, cls: $("#fClass").value })); } catch (e) {}
+  const btn = $("#btnSubmit"); btn.disabled = true; btn.textContent = "Uploading…"; S.busy = true;
+  const errs = d.issues.filter(i => i.sev === "error").length;
+  const qty = Math.max(1, Math.min(20, +$("#fQty").value || 1));
+  const est = Analyzer.estimate(d.metrics, S.config.est, (S.cal || { f: 1 }).f);
+  const job = {
+    studentName: name, className: $("#fClass").value, projectName: project,
+    notes: $("#fNotes").value.trim(), color: $("#fColor").value.trim(), qty,
+    dueAt: new Date(due).getTime(), status: errs ? "needs_fix" : "queued",
+    fileName: d.name, fileBytes: d.buf.byteLength, thumb: Viewer.thumb(),
+    metrics: d.metrics, issues: d.issues.map(i => ({ sev: i.sev, code: i.code, title: i.title })),
+    estMinutes: Math.round(est.seconds * qty / 60),
+  };
+  try {
+    await API.call("submit", { job, fileB64: bufToB64(d.buf) });
+    toast(errs ? "Sent to your teacher for review." : "Added to the queue.");
+    S.draft = null; $("#issues").innerHTML = ""; $("#readout").innerHTML = ""; $("#verdict").hidden = true; $("#gline").textContent = "";
+    $("#fProject").value = ""; $("#fNotes").value = "";
+    setView("mine");
+  } catch (err) {
+    console.warn(err); toast("Couldn't submit: " + err.message);
+    btn.disabled = false; btn.textContent = errs ? "Send to teacher for review" : "Add to queue";
+  } finally { S.busy = false; }
+});
+function bufToB64(buf) { const u = new Uint8Array(buf); let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+
+/* ----- queue ----- */
+function renderQueue() {
+  if (!S.signedIn) { $("#stats").innerHTML = ""; $("#lanes").innerHTML = ""; $("#queueTable").innerHTML = signInPanel("see the queue"); return; }
+  const now = Date.now();
+  const printing = S.jobs.filter(j => j.status === "printing" && j._est);
+  const queued = S.jobs.filter(j => j.status === "queued" && j._est).sort((a, b) => b._pr.score - a._pr.score);
+  const hrs = queued.reduce((s, j) => s + j._est.seconds * (j.qty || 1), 0) / 3600;
+  const late = queued.filter(j => S.sched.slots[j.id] && S.sched.slots[j.id].late).length;
+  const online = S.config.printers.filter(p => p.online !== false).length;
+  $("#stats").innerHTML = `
+    <div><b>${queued.length}</b><span class="muted">waiting</span></div>
+    <div><b>${printing.length}</b><span class="muted">printing now</span></div>
+    <div><b>${hrs.toFixed(1)} h</b><span class="muted">of printing queued</span></div>
+    <div><b>${online}/${S.config.printers.length}</b><span class="muted">printers online</span></div>
+    ${late ? `<div><b style="color:var(--bad)">${late}</b><span class="muted">projected late</span></div>` : ""}`;
+  $("#lanes").innerHTML = S.config.printers.map(p => {
+    const cur = printing.find(j => j.printerId === p.id);
+    const next = queued.filter(j => S.sched.slots[j.id] && S.sched.slots[j.id].printer && S.sched.slots[j.id].printer.id === p.id).slice(0, 4);
+    let body;
+    if (p.online === false) body = `<span class="pill">Offline</span>`;
+    else if (cur) {
+      const dur = cur._est.seconds * (cur.qty || 1) * 1000, el = now - (cur.startedAt || now), pct = Math.max(2, Math.min(100, el / dur * 100));
+      body = `<div><b>${esc(cur.projectName)}</b> <span class="muted">· ${esc(cur.studentName)}</span></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="muted mono" style="font-size:12px">done ≈ ${fmtWhen((cur.startedAt || now) + dur)}</div>`;
+    } else body = `<span class="pill" data-s="done">Idle</span>`;
+    return `<div class="lane panel"><div class="lh"><h3>${esc(p.name)}</h3><span class="muted mono" style="font-size:12px">${p.x}×${p.y}×${p.z}</span></div>${body}
+      ${next.length ? `<div><span class="label">Up next</span><ol>${next.map(j => `<li>${esc(j.projectName)} <span class="muted">· ${fmtWhen(S.sched.slots[j.id].start)}</span></li>`).join("")}</ol></div>` : ""}</div>`;
+  }).join("");
+  if (!queued.length) {
+    $("#queueTable").innerHTML = `<div class="panel empty-state"><h3>Nothing waiting</h3><p>When students submit models they'll line up here, highest priority first. Submit one from the <b>Submit a model</b> tab.</p></div>`;
+    return;
+  }
+  const rows = queued.map((j, i) => {
+    const sl = S.sched.slots[j.id] || {};
+    const open = S.open === j.id;
+    const warn = (j.issues || []).filter(x => x.sev === "warn").length;
+    return `<tr class="row" data-id="${j.id}" aria-expanded="${open}">
+      <td class="num">${i + 1}</td>
+      <td>${j.thumb ? `<img class="thumb" src="${esc(j.thumb)}" alt="">` : `<div class="thumb"></div>`}</td>
+      <td><b>${esc(j.projectName)}</b>${j.qty > 1 ? ` <span class="muted">×${j.qty}</span>` : ""}<div class="muted" style="font-size:13px">${esc(j.studentName)}${j.className ? " · " + esc(j.className) : ""}${j.mine ? " · <b>yours</b>" : ""}</div></td>
+      <td class="num">${fmtDur(j._est.seconds * (j.qty || 1))}<div class="muted" style="font-size:12px">${(j._est.grams * (j.qty || 1)).toFixed(0)} g</div></td>
+      <td class="num">${fmtWhen(j.dueAt)}</td>
+      <td class="num">${sl.printer ? `${fmtWhen(sl.start)}<div class="muted" style="font-size:12px">${esc(sl.printer.name)}</div>` : `<span class="pill" data-s="late">No printer fits</span>`}</td>
+      <td><span class="score"><span class="mono">${j._pr.score.toFixed(0)}</span><span class="meter"><i style="width:${Math.min(100, j._pr.score)}%"></i></span></span></td>
+      <td>${j.urgent ? `<span class="pill" data-s="urgent">Urgent</span> ` : ""}${sl.late ? `<span class="pill" data-s="late">Late</span> ` : ""}${warn ? `<span class="pill">${warn} check${warn > 1 ? "s" : ""}</span>` : ""}</td>
+    </tr>${open ? `<tr class="detail"><td colspan="8">${breakdown(j)}</td></tr>` : ""}`;
+  }).join("");
+  $("#queueTable").innerHTML = `<div class="tablewrap"><table>
+    <thead><tr><th>#</th><th></th><th>Project</th><th>Time · filament</th><th>Needed by</th><th>Projected start</th><th>Priority</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+  document.querySelectorAll("#queueTable tr.row").forEach(tr => tr.addEventListener("click", () => { S.open = S.open === tr.dataset.id ? null : tr.dataset.id; renderQueue(); }));
+}
+function breakdown(j) {
+  const p = j._pr.parts, sl = S.sched.slots[j.id] || {};
+  const labels = { due: "Due date", short: "Short print", filament: "Low filament", wait: "Time waiting", quality: "Model quality" };
+  return `<div class="breakdown">${Object.keys(labels).map(k => `<span><span class="label">${labels[k]}</span><br><span class="mono">+${p[k].toFixed(1)}</span></span>`).join("")}
+    ${j.urgent ? `<span><span class="label">Urgent</span><br><span class="mono">+${S.config.weights.urgent}</span></span>` : ""}</div>
+    <div class="muted">${j._pr.slackH === null ? "No due date." : j._pr.slackH < 0 ? `Already can't finish before it's due if started now.` : `${(j._pr.slackH).toFixed(0)} h of slack if started now.`}
+    ${sl.end ? ` Projected finish ${fmtWhen(sl.end)}.` : ""} ${(j.issues || []).map(i => esc(i.title)).join(" · ")}</div>`;
+}
+
+/* ----- mine ----- */
+function positionOf(j) {
+  const q = S.jobs.filter(x => x.status === "queued" && x._pr).sort((a, b) => b._pr.score - a._pr.score);
+  const i = q.findIndex(x => x.id === j.id); return i >= 0 ? i + 1 : null;
+}
+function jobCard(j, teacher) {
+  const sl = S.sched.slots[j.id] || {};
+  const pos = j.status === "queued" ? positionOf(j) : null;
+  const est = j._est ? `${fmtDur(j._est.seconds * (j.qty || 1))} · ${(j._est.grams * (j.qty || 1)).toFixed(0)} g` : "";
+  let where = "";
+  if (j.status === "queued") where = sl.printer ? `#${pos} in line · starts ≈ ${fmtWhen(sl.start)} on ${esc(sl.printer.name)}${sl.late ? ` · <b style="color:var(--bad)">may finish after it's due</b>` : ""}` : "No printer is big enough";
+  else if (j.status === "printing") { const pr = S.config.printers.find(p => p.id === j.printerId); where = `On ${esc(pr ? pr.name : "a printer")} · done ≈ ${fmtWhen((j.startedAt || Date.now()) + (j._est ? j._est.seconds * (j.qty || 1) * 1000 : 0))}`; }
+  else if (j.status === "done") where = `Printed ${fmtWhen(j.finishedAt)}${j.actualMin ? ` · took ${fmtDur(j.actualMin * 60)}` : ""}`;
+  const issues = (j.issues || []).filter(i => i.sev !== "info");
+  let actions = "";
+  if (teacher) {
+    const opts = S.config.printers.map(p => `<option value="${p.id}" ${(sl.printer && sl.printer.id === p.id) || j.printerId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+    if (j.status === "queued" || j.status === "needs_fix") actions += `<select aria-label="Printer" data-printer="${j.id}">${opts}</select><button class="btn small primary" data-act="start" data-id="${j.id}">Start printing</button>`;
+    if (j.status === "needs_fix") actions += `<button class="btn small" data-act="approve" data-id="${j.id}">Approve for queue</button>`;
+    if (j.status === "printing") actions += `<button class="btn small primary" data-act="done" data-id="${j.id}">Mark printed</button><button class="btn small" data-act="failed" data-id="${j.id}">Failed, requeue</button>`;
+    if (j.status === "done" && !j.archived) actions += `<button class="btn small" data-act="archive" data-id="${j.id}">Archive</button>`;
+    if (j.status === "done") actions += `<button class="btn small" data-act="restore" data-id="${j.id}">Print again…</button>`;
+    if (j.status !== "done" && j.status !== "cancelled") actions += `<button class="btn small" data-act="urgent" data-id="${j.id}" aria-pressed="${!!j.urgent}">${j.urgent ? "Remove urgent" : "Mark urgent"}</button>
+      <button class="btn small" data-act="sendback" data-id="${j.id}">Send back…</button>
+      <button class="btn small danger" data-act="remove" data-id="${j.id}">Remove</button>`;
+    if (j.driveUrl) actions += `<a class="btn small" href="${esc(j.driveUrl)}" target="_blank" rel="noopener">Open in Drive</a>`;
+    actions += `<div data-confirm="${j.id}" hidden></div>`;
+  } else if (j.status === "queued" || j.status === "needs_fix") actions = `<button class="btn small danger" data-act="cancel" data-id="${j.id}">Cancel</button><div data-confirm="${j.id}" hidden></div>`;
+  return `<div class="card panel">
+    ${j.thumb ? `<img class="thumb" src="${esc(j.thumb)}" alt="">` : `<div class="thumb"></div>`}
+    <div style="min-width:0">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3>${esc(j.projectName)}${j.qty > 1 ? ` ×${j.qty}` : ""}</h3><span class="pill" data-s="${j.status}">${STATUS[j.status] || j.status}</span>${teacher && j.archived ? `<span class="pill">Archived${j.driveFileId ? (j.driveArchived ? " · in Drive Archive" : " · Drive move failed") : ""}</span>` : ""}${j.urgent ? `<span class="pill" data-s="urgent">Urgent</span>` : ""}${j._pr && (j.status === "queued") ? `<span class="muted mono" style="font-size:12px">score ${j._pr.score.toFixed(0)}</span>` : ""}</div>
+      <div class="meta"><span>${esc(j.studentName)}${j.className ? " · " + esc(j.className) : ""}${teacher && j.ownerEmail ? ` · <span class="mono">${esc(j.ownerEmail)}</span>` : ""}</span><span class="mono">${est}</span><span>Due ${fmtWhen(j.dueAt)}</span>${j.metrics ? `<span class="mono">${j.metrics.dims.map(n => Math.round(n)).join("×")} mm</span>` : ""}</div>
+      ${where ? `<div style="font-size:14px;margin-top:6px">${where}</div>` : ""}
+      ${issues.length ? `<div class="mini-issues">${issues.map(i => `<span class="sev" data-sev="${i.sev}">${esc(i.title)}</span>`).join("")}</div>` : ""}
+      ${j.teacherNote ? `<div class="note"><b>Teacher:</b> ${esc(j.teacherNote)}</div>` : ""}
+      ${teacher && j.notes ? `<div class="muted" style="font-size:13px;margin-top:6px">Student note: ${esc(j.notes)}${j.color ? ` · Color: ${esc(j.color)}` : ""}</div>` : ""}
+      ${teacher && j.driveError ? `<div class="muted" style="font-size:13px;margin-top:4px">Drive: ${esc(j.driveError)}</div>` : ""}
+    </div>
+    <div class="cact">${actions}</div>
+  </div>`;
+}
+function renderMine() {
+  const el = $("#mine");
+  if (!S.signedIn) { el.innerHTML = signInPanel("see your prints"); return; }
+  const mine = S.jobs.filter(j => j.mine && j.status !== "cancelled").sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+  el.innerHTML = mine.length ? mine.map(j => jobCard(j, false)).join("") : `<div class="panel empty-state"><h3>No prints yet</h3><p>Upload an STL on the <b>Submit a model</b> tab. Once it's in, you'll see its place in line and when it should start.</p></div>`;
+  wireActions(el);
+}
+
+/* ----- teacher ----- */
+function renderTeacher() {
+  document.querySelectorAll("#tFilter button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === S.tFilter));
+  const f = S.tFilter;
+  const order = { printing: 0, needs_fix: 1, queued: 2, done: 3, failed: 4, cancelled: 5 };
+  let list = S.jobs.filter(j => f === "all" ? true : f === "active" ? (j.status === "queued" || j.status === "printing" || j.status === "needs_fix") : f === "archived" ? (j.status === "done" || j.archived) : j.status === f);
+  const unarchived = S.jobs.filter(j => j.status === "done" && !j.archived).length;
+  $("#btnArchiveAll").hidden = !unarchived;
+  $("#btnArchiveAll").textContent = `Archive ${unarchived} printed job${unarchived === 1 ? "" : "s"}`;
+  const inFilter = list.length;
+  const q = S.tQuery.trim().toLowerCase();
+  if (q) {
+    const words = q.split(/\s+/);
+    list = list.filter(j => { const hay = [j.studentName, j.projectName, j.className, j.fileName, j.ownerEmail].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); });
+  }
+  const pr = j => j._pr ? j._pr.score : -1;
+  const time = j => j._est ? j._est.seconds * (j.qty || 1) : Infinity;
+  const sorters = {
+    status: (a, b) => (order[a.status] - order[b.status]) || (pr(b) - pr(a)) || ((b.finishedAt || 0) - (a.finishedAt || 0)),
+    priority: (a, b) => pr(b) - pr(a),
+    printability: (a, b) => printability(a) - printability(b),
+    time: (a, b) => time(a) - time(b),
+    submitted: (a, b) => (b.submittedAt || 0) - (a.submittedAt || 0),
+  };
+  const sorter = sorters[S.tSort] || sorters.status;
+  list.sort((a, b) => (S.tDir * sorter(a, b)) || ((b.submittedAt || 0) - (a.submittedAt || 0)));
+  $("#tDir").textContent = SORT_DIR[S.tSort][S.tDir === 1 ? 0 : 1];
+  $("#tDir").hidden = S.tSort === "status";
+  $("#tCount").textContent = q ? `${list.length} of ${inFilter} job${inFilter === 1 ? "" : "s"} match "${S.tQuery.trim()}"` : `${list.length} job${list.length === 1 ? "" : "s"}`;
+  const el = $("#tJobs");
+  el.innerHTML = list.length ? list.map(j => jobCard(j, true)).join("")
+    : q ? `<div class="panel empty-state"><h3>No jobs match "${esc(S.tQuery.trim())}"</h3><p>Check the spelling, or switch the filter to <b>All</b> to include finished and removed jobs.</p></div>`
+    : `<div class="panel empty-state"><h3>Nothing here</h3><p>Jobs show up as students submit them.</p></div>`;
+  wireActions(el);
+  if (!$("#settingsPanel").dataset.built) buildSettings();
+  const c = S.config;
+  $("#driveStatus").innerHTML = `Files save to Google Drive as students submit.${c.driveFolderUrl ? ` <a href="${esc(c.driveFolderUrl)}" target="_blank" rel="noopener">Uploads folder</a>` : ""}${c.driveArchiveFolderUrl ? ` · <a href="${esc(c.driveArchiveFolderUrl)}" target="_blank" rel="noopener">Archive</a>` : ""}${c.sheetUrl ? ` · <a href="${esc(c.sheetUrl)}" target="_blank" rel="noopener">Queue spreadsheet</a>` : ""}`;
+}
+document.querySelectorAll("#tFilter button").forEach(b => b.addEventListener("click", () => { S.tFilter = b.dataset.f; renderTeacher(); }));
+// lower = more printable: errors weigh most, then warnings, then notes
+function printability(j) { const is = j.issues || []; return is.reduce((s, i) => s + (i.sev === "error" ? 100 : i.sev === "warn" ? 10 : 1), 0); }
+const SORT_DIR = {
+  status: ["", ""], priority: ["Highest first", "Lowest first"], printability: ["Most printable first", "Most problems first"],
+  time: ["Shortest first", "Longest first"], submitted: ["Newest first", "Oldest first"],
+};
+S.tQuery = ""; S.tSort = "status"; S.tDir = 1;
+try { const s = JSON.parse(localStorage.getItem("pq-tsort") || "{}"); if (SORT_DIR[s.sort]) { S.tSort = s.sort; S.tDir = s.dir === -1 ? -1 : 1; } } catch (e) {}
+$("#tSort").value = S.tSort;
+const saveSort = () => { try { localStorage.setItem("pq-tsort", JSON.stringify({ sort: S.tSort, dir: S.tDir })); } catch (e) {} };
+$("#tSearch").addEventListener("input", e => { S.tQuery = e.target.value; renderTeacher(); });
+$("#tSort").addEventListener("change", e => { S.tSort = e.target.value; S.tDir = 1; saveSort(); renderTeacher(); });
+$("#tDir").addEventListener("click", () => { S.tDir = -S.tDir; saveSort(); renderTeacher(); });
+$("#btnArchiveAll").addEventListener("click", async e => {
+  const btn = e.currentTarget; btn.disabled = true;
+  try { const r = await API.call("archiveAll"); toast(`Archived ${r.count} job${r.count === 1 ? "" : "s"}.`); }
+  catch (err) { toast("Couldn't archive: " + err.message); }
+  btn.disabled = false;
+});
+
+function wireActions(root) {
+  root.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => act(b.dataset.act, b.dataset.id, root)));
+}
+async function updateJob(id, patch, msg) {
+  S.busy = true;
+  try { await API.call("update", { id, patch }); if (msg) toast(msg); }
+  catch (e) { console.warn(e); toast("Couldn't save that change: " + e.message); }
+  finally { S.busy = false; }
+}
+function confirmBox(root, id, html, onOk) {
+  const box = root.querySelector(`[data-confirm="${id}"]`); if (!box) return;
+  box.hidden = false; box.innerHTML = html;
+  box.querySelector("[data-ok]").addEventListener("click", () => onOk(box));
+  box.querySelector("[data-no]").addEventListener("click", () => { box.hidden = true; box.innerHTML = ""; });
+  const inp = box.querySelector("input,textarea"); if (inp) inp.focus();
+}
+async function act(a, id, root) {
+  const j = S.jobs.find(x => x.id === id); if (!j || !S.signedIn) return;
+  if (a === "start") {
+    const sel = root.querySelector(`[data-printer="${id}"]`), pid = sel ? sel.value : (S.config.printers[0] || {}).id;
+    const busy = S.jobs.find(x => x.status === "printing" && x.printerId === pid);
+    if (busy) { toast(`${(S.config.printers.find(p => p.id === pid) || {}).name || "That printer"} is busy with "${busy.projectName}". Mark it printed first.`); return; }
+    return updateJob(id, { status: "printing", printerId: pid, startedAt: Date.now() }, "Started.");
+  }
+  if (a === "approve") return updateJob(id, { status: "queued", teacherNote: "" }, "Approved for the queue.");
+  if (a === "urgent") return updateJob(id, { urgent: !j.urgent });
+  if (a === "done") {
+    const elapsed = j.startedAt ? Math.round((Date.now() - j.startedAt) / 60000) : "";
+    return confirmBox(root, id, `<label class="label" for="am-${id}">Actual print time (min)</label><input id="am-${id}" type="number" min="1" value="${elapsed}"><div class="actions" style="margin-top:6px"><button class="btn small primary" data-ok>Save</button><button class="btn small" data-no>Cancel</button></div>`,
+      box => { const v = +box.querySelector("input").value; updateJob(id, { status: "done", finishedAt: Date.now(), actualMin: v > 0 ? v : null, archived: true, archivedAt: Date.now() }, "Marked printed and archived."); });
+  }
+  if (a === "archive") return updateJob(id, { archived: true, archivedAt: Date.now() }, "Archived.");
+  if (a === "restore") return confirmBox(root, id, `<span style="font-size:13px">Put "${esc(j.projectName)}" back in the queue to print again?</span><div class="actions" style="margin-top:6px"><button class="btn small primary" data-ok>Requeue</button><button class="btn small" data-no>Cancel</button></div>`,
+    () => updateJob(id, { status: "queued", archived: false, archivedAt: null, printerId: null, startedAt: null, finishedAt: null }, "Back in the queue."));
+  if (a === "failed") return confirmBox(root, id, `<label class="label" for="fn-${id}">What went wrong?</label><input id="fn-${id}" placeholder="e.g. came loose from the bed"><div class="actions" style="margin-top:6px"><button class="btn small primary" data-ok>Requeue</button><button class="btn small" data-no>Cancel</button></div>`,
+    box => updateJob(id, { status: "queued", printerId: null, startedAt: null, urgent: true, teacherNote: box.querySelector("input").value.trim() ? "Print failed: " + box.querySelector("input").value.trim() + ". Requeued." : "Print failed. Requeued." }, "Requeued as urgent."));
+  if (a === "sendback") return confirmBox(root, id, `<label class="label" for="sb-${id}">Note to the student</label><textarea id="sb-${id}" placeholder="What should they change?"></textarea><div class="actions" style="margin-top:6px"><button class="btn small primary" data-ok>Send back</button><button class="btn small" data-no>Cancel</button></div>`,
+    box => updateJob(id, { status: "needs_fix", printerId: null, startedAt: null, teacherNote: box.querySelector("textarea").value.trim() || "Please fix your model and resubmit." }, "Sent back to the student."));
+  if (a === "remove") return confirmBox(root, id, `<span style="font-size:13px">Remove "${esc(j.projectName)}" from the queue? The student won't get a note.</span><div class="actions" style="margin-top:6px"><button class="btn small danger" data-ok>Remove</button><button class="btn small" data-no>Keep it</button></div>`,
+    () => updateJob(id, { status: "cancelled", removedByTeacher: true, printerId: null, startedAt: null, urgent: false }, "Removed from the queue."));
+  if (a === "cancel") return confirmBox(root, id, `<span style="font-size:13px">Remove this job from the queue?</span><div class="actions" style="margin-top:6px"><button class="btn small danger" data-ok>Yes, cancel it</button><button class="btn small" data-no>Keep it</button></div>`,
+    () => updateJob(id, { status: "cancelled" }, "Cancelled."));
+}
+
+function buildSettings() {
+  const panel = $("#settingsPanel"); panel.dataset.built = "1";
+  const c = S.config;
+  const prow = p => `<div class="printer-row" data-pid="${p.id}">
+    <input aria-label="Printer name" data-k="name" value="${esc(p.name)}">
+    <input aria-label="Width X (mm)" data-k="x" type="number" value="${p.x}">
+    <input aria-label="Depth Y (mm)" data-k="y" type="number" value="${p.y}">
+    <input aria-label="Height Z (mm)" data-k="z" type="number" value="${p.z}">
+    <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" data-k="online" style="width:auto" ${p.online !== false ? "checked" : ""}>Online</label>
+    <button class="btn small danger" type="button" data-rm>Remove</button></div>`;
+  $("#printerRows").innerHTML = `<div class="printer-row label" style="margin-bottom:4px"><span>Name</span><span>X mm</span><span>Y mm</span><span>Z mm</span><span></span><span></span></div>` + c.printers.map(prow).join("");
+  $("#printerRows").querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", () => b.closest(".printer-row").remove()));
+  $("#btnAddPrinter").onclick = () => { const d = document.createElement("div"); d.innerHTML = prow({ id: "p" + Date.now().toString(36), name: "Printer " + ($("#printerRows").querySelectorAll("[data-pid]").length + 1), x: 220, y: 220, z: 250, online: true }); const r = d.firstElementChild; $("#printerRows").appendChild(r); r.querySelector("[data-rm]").addEventListener("click", () => r.remove()); };
+  const ef = [["layerH", "Layer height (mm)", 0.01], ["infill", "Infill (0–1)", 0.05], ["wallMm", "Wall + top/bottom thickness (mm)", 0.1], ["flow", "Average flow (mm³/s)", 0.5], ["overhead", "Travel/slowdown factor", 0.05], ["heatup", "Heat-up time (min)", 1], ["density", "Filament density (g/cm³)", 0.01]];
+  $("#estFields").innerHTML = ef.map(([k, l, s]) => `<div class="field"><label for="e-${k}">${l}</label><input id="e-${k}" data-e="${k}" type="number" step="${s}" value="${c.est[k]}"></div>`).join("");
+  const wf = [["due", "Due date"], ["short", "Short prints first"], ["filament", "Low filament"], ["wait", "Time waiting"], ["quality", "Model quality"], ["urgent", "Urgent flag (bonus points)"]];
+  $("#weightFields").innerHTML = wf.map(([k, l]) => `<div class="field"><label for="w-${k}">${l} <span class="mono muted" id="wv-${k}">${c.weights[k]}</span></label><input id="w-${k}" data-w="${k}" type="range" min="0" max="${k === "urgent" ? 100 : 60}" value="${c.weights[k]}"></div>`).join("");
+  $("#weightFields").querySelectorAll("input").forEach(i => i.addEventListener("input", () => $("#wv-" + i.dataset.w).textContent = i.value));
+  $("#teacherList").value = (c.teachers || []).join("\n");
+  const cal = S.cal || { f: 1, n: 0 };
+  $("#calibNote").textContent = cal.n >= 2 ? `Times are calibrated from ${cal.n} finished prints (×${cal.f.toFixed(2)}).` : "Enter actual times when you mark jobs printed and estimates will calibrate themselves.";
+}
+$("#btnSaveSettings").addEventListener("click", async () => {
+  const printers = [...$("#printerRows").querySelectorAll("[data-pid]")].map(r => ({
+    id: r.dataset.pid, name: r.querySelector('[data-k="name"]').value.trim() || "Printer",
+    x: +r.querySelector('[data-k="x"]').value || 200, y: +r.querySelector('[data-k="y"]').value || 200, z: +r.querySelector('[data-k="z"]').value || 200,
+    online: r.querySelector('[data-k="online"]').checked }));
+  if (!printers.length) { toast("Keep at least one printer."); return; }
+  const est = {}; $("#estFields").querySelectorAll("input").forEach(i => est[i.dataset.e] = +i.value || DEFAULTS.est[i.dataset.e]);
+  const weights = {}; $("#weightFields").querySelectorAll("input").forEach(i => weights[i.dataset.w] = +i.value);
+  const teachers = $("#teacherList").value.split(/[\s,;]+/).map(s => s.trim().toLowerCase()).filter(s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s));
+  try { await API.call("saveConfig", { config: { printers, est, weights, teachers } }); $("#settingsPanel").dataset.built = ""; render(); toast("Settings saved."); }
+  catch (e) { console.warn(e); toast("Couldn't save settings: " + e.message); }
+});
+
+function applyConfig(c) {
+  if (!c || !Array.isArray(c.printers)) return;
+  S.config = { ...c, printers: c.printers, est: { ...DEFAULTS.est, ...(c.est || {}) }, weights: { ...DEFAULTS.weights, ...(c.weights || {}) } };
+  const panel = $("#settingsPanel"); if (panel && !panel.open) panel.dataset.built = "";
+  if (S.draft) S.draft.issues = Analyzer.buildIssues(S.draft.m, S.config.printers);
+}
+
+/* ----- theme toggle: Auto → Light → Dark ----- */
+const Theme = (() => {
+  const root = document.documentElement;
+  const names = { auto: "Auto", light: "Light", dark: "Dark" }, next = { auto: "light", light: "dark", dark: "auto" };
+  let mode = "auto";
+  try { const s = localStorage.getItem("pq-theme"); if (s && names[s]) mode = s; } catch (e) {}
+  function apply() {
+    if (mode === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", mode);
+    $("#btnTheme").textContent = "Theme: " + names[mode];
+    setTimeout(() => Viewer.redraw(), 0);
+  }
+  $("#btnTheme").addEventListener("click", () => { mode = next[mode]; try { localStorage.setItem("pq-theme", mode); } catch (e) {} apply(); });
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => mode === "auto" && Viewer.redraw()); } catch (e) {}
+  apply();
+})();
+function showBanner(msg) { const b = $("#connBanner"); b.textContent = msg; b.hidden = false; b.dataset.tone = "warn"; }
+setInterval(() => { if (S.view === "queue" || S.view === "mine" || S.view === "teacher") render(); }, 60000);
+
+function boot() {
+  const ok = Viewer.init($("#cv"));
+  if (!ok) $("#viewerEmpty").hidden = false;
+  const h = (location.hash || "").slice(1);
+  if (["submit", "queue", "mine"].includes(h)) S.view = h;
+  loadExample();
+  setView(S.view);
+  if (!configured()) { renderAuth(); showBanner("This site isn't connected to its Google Apps Script yet. Fill in config.js (setup guide, step 5). Model checks still work."); return; }
+  setSignedOut();
+  // wait for Google's sign-in library, then restore an existing session or offer the button
+  let tries = 0;
+  const wait = setInterval(() => {
+    tries++;
+    if (Auth.init()) {
+      clearInterval(wait);
+      renderAuth();
+      if (Auth.valid()) onSignedIn(); else Auth.prompt();
+    } else if (tries > 50) { clearInterval(wait); showBanner("Google sign-in didn't load. Check that your browser isn't blocking accounts.google.com, then reload."); }
+  }, 200);
+}
+boot();
+</script>
+</body>
+</html>
