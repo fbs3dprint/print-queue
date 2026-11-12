@@ -195,7 +195,7 @@ mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
     <div class="section-head">
       <div>
         <h2>Check your model, then join the queue</h2>
-        <p class="lede">Upload an STL. It's checked right here in your browser for problems that make prints fail: holes in the surface, floating parts, tiny gaps, tippy bases and big overhangs.</p>
+        <p class="lede">Upload your STL file. We check it for problems before it prints, like holes, floating parts and wobbly bottoms.</p>
       </div>
     </div>
     <div class="submit-grid">
@@ -209,9 +209,9 @@ mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
             <button class="btn small" id="btnReset">Reset view</button>
           </div>
           <div class="legend">
-            <span><i style="background:#3FA34D"></i>On the bed</span>
-            <span><i style="background:#E8A13A"></i>Overhang &gt; 45°</span>
-            <span><i style="background:#E5484D"></i>Floating part / hole edge</span>
+            <span><i style="background:#3FA34D"></i>Touches the bed</span>
+            <span><i style="background:#E8A13A"></i>Hangs over air</span>
+            <span><i style="background:#E5484D"></i>Floating part or hole</span>
           </div>
         </div>
         <label class="drop" id="drop" tabindex="0">
@@ -255,7 +255,7 @@ mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
     <div class="section-head">
       <div>
         <h2>Print queue</h2>
-        <p class="lede">Jobs are ordered by a priority score built from how soon they're due, how long they take, filament use, time waiting, model quality and any teacher override. Start times are projected across every printer.</p>
+        <p class="lede">Jobs are ordered by a priority score built from how soon they're due, how long they take, filament use, time waiting, model quality and any teacher override. Start times are estimates across all printers.</p>
       </div>
     </div>
     <div class="stats" id="stats"></div>
@@ -624,69 +624,69 @@ const Analyzer = (() => {
   function buildIssues(m, printers) {
     const out = [];
     const add = (sev, code, title, detail, fix) => out.push({ sev, code, title, detail, fix });
+    const size = m.dims.map(f1).join(" × ") + " mm";
     const maxDim = Math.max(...m.dims);
-    if (maxDim < 3) add("error", "units", "Model is tiny — probably the wrong units",
-      `It measures ${m.dims.map(f1).join(" × ")} mm. At that size it would print as a speck.`,
-      `If you modeled in centimeters, scale by <b>10</b>; in inches, scale by <b>25.4</b>. Re-export in millimeters.`);
-    else if (maxDim > 2000) add("error", "units", "Model is huge — probably the wrong units",
-      `It measures ${m.dims.map(f1).join(" × ")} mm (over 2 m).`, `If you modeled in micrometers or exported at the wrong scale, scale it down and re-export in millimeters.`);
+    if (maxDim < 3) add("error", "units", "Your model is way too small",
+      `It is only ${size}. It would print as a tiny dot.`,
+      `If you used centimeters, make it <b>10 times</b> bigger. If you used inches, make it <b>25.4 times</b> bigger.`);
+    else if (maxDim > 2000) add("error", "units", "Your model is way too big",
+      `It is over 2 meters long.`, `Check your units. Save it again in millimeters (mm).`);
     const fit = fitCheck(m.dims, printers);
     if (!fit.asIs.length && !fit.rotated.length && maxDim <= 2000) add("error", "size", "Too big for our printers",
-      `${m.dims.map(f1).join(" × ")} mm won't fit on any printer (largest: ${printers.map(p => `${p.x}×${p.y}×${p.z}`).sort().pop()} mm).`,
-      `Scale it down, or split it into parts that you glue after printing.`);
-    else if (!fit.asIs.length && fit.rotated.length) add("warn", "size", "Only fits if it's turned on its side",
-      `In this orientation it's taller or wider than the build plate.`, `Rotate it in your design software so its longest side lies flat, then re-export.`);
-    if (m.boundary > 0) add("error", "holes", "Holes in the surface",
-      `${m.boundary.toLocaleString()} open edges. The model isn't a closed solid, so the slicer has to guess what's inside. Red lines in the preview mark the openings.`,
-      `Make sure every face connects. In Tinkercad, group the shapes; in Fusion or Onshape, export a <b>body</b> (not a surface). Mesh tools like "Make solid" or "Repair" can close small holes.`);
-    if (m.nonManifold > 0) add("warn", "nonmanifold", "Edges shared by more than two faces",
-      `${m.nonManifold.toLocaleString()} edges are connected to 3 or more faces (often two shapes touching along one edge). Slicers can misread these.`,
-      `Overlap the shapes slightly so they share volume, not just an edge, and combine them into one body.`);
-    if (m.inverted) add("warn", "inverted", "The model is inside-out",
-      `Its surface normals point inward. Most slicers fix this automatically, but it's a sign the export went wrong.`, `Flip normals in your mesh tool, or re-export from your design software.`);
-    else if (m.flipped > 0 && m.boundary === 0) add("warn", "flipped", "Some faces point the wrong way",
-      `${m.flipped.toLocaleString()} edges join faces facing opposite directions.`, `Run "Repair" or "Make normals consistent" in your mesh tool.`);
-    if (m.degenerate > 50) add("info", "degenerate", "Some zero-size triangles",
-      `${m.degenerate.toLocaleString()} triangles have no area. Usually harmless.`, `No action needed unless other problems show up.`);
+      `It is ${size}. Our biggest printer fits ${printers.map(p => `${p.x} × ${p.y} × ${p.z}`).sort().pop()} mm.`,
+      `Make it smaller, or cut it into parts you can glue together.`);
+    else if (!fit.asIs.length && fit.rotated.length) add("warn", "size", "Turn it on its side",
+      `It only fits if you lay it down.`, `Rotate it so the longest side is flat. Then save it again.`);
+    if (m.boundary > 0) add("error", "holes", "Your model has holes",
+      `The outside has gaps, so it is not a solid shape. Red lines show where.`,
+      `Make sure all the pieces are joined. In Tinkercad, select everything and click <b>Group</b>.`);
+    if (m.nonManifold > 0) add("warn", "nonmanifold", "Shapes only touch at an edge",
+      `Some shapes meet at a thin line. That can confuse the printer.`,
+      `Push the shapes into each other a little, then <b>Group</b> them.`);
+    if (m.inverted) add("warn", "inverted", "Your model is inside-out",
+      `The printer program can usually fix this.`, `Try saving the STL again.`);
+    else if (m.flipped > 0 && m.boundary === 0) add("warn", "flipped", "Some faces are backwards",
+      `A few faces point the wrong way.`, `<b>Group</b> your shapes, then save the STL again.`);
+    if (m.degenerate > 50) add("info", "degenerate", "Some tiny broken triangles",
+      `This is usually fine.`, `Nothing to do.`);
     if (m.floating > 0) add("error", "floating", m.floating === 1 ? "A part is floating in the air" : `${m.floating} parts are floating in the air`,
-      `These pieces don't touch the bed or any part that does. The printer would start them on thin air and they'd turn into spaghetti. They're red in the preview.`,
-      `Move them down so they rest on the model, or overlap them into the part below by about <b>0.5 mm</b> and combine. If the gap is on purpose, ask your teacher about supports.`);
-    if (m.gaps.length) add("warn", "gap", m.gaps.length === 1 ? "Two parts almost touch" : `${m.gaps.length} places where parts almost touch`,
-      `The closest gap is <b>${m.gaps[0].toFixed(2)} mm</b>. Gaps under 0.8 mm are too small to print cleanly: parts may fuse together or print as loose pieces.`,
-      `If they should be one piece, overlap them by <b>0.5 mm</b> or more. If they should move (a hinge or chain), widen the gap to at least <b>0.5–0.8 mm</b> on purpose.`);
-    if (m.touch) add("warn", "touch", "Parts touch but aren't joined",
-      `${m.touch} pair${m.touch > 1 ? "s" : ""} of shapes meet at a face, edge or point without being merged. That joint will be weak or may not print at all.`,
-      `Push the shapes into each other a little (about <b>0.5 mm</b>) and group or union them before exporting.`);
-    if (m.overlaps) add("info", "overlap", "Overlapping shapes",
-      `${m.shells} separate shapes overlap each other. Slicers usually merge these fine.`, `Optional: union them into one body for the cleanest result.`);
+      `${m.floating === 1 ? "It doesn't" : "They don't"} touch anything below. The printer can't print on air. Look for red in the picture.`,
+      `Move it down so it sits on the part below. Push it in a little (about <b>0.5 mm</b>), then <b>Group</b>.`);
+    if (m.gaps.length) add("warn", "gap", m.gaps.length === 1 ? "Two parts almost touch" : `Parts almost touch in ${m.gaps.length} places`,
+      `There is a <b>${m.gaps[0].toFixed(1)} mm</b> gap. That's too small to print well.`,
+      `To join them, push them together. To keep them apart, make the gap at least <b>0.8 mm</b>.`);
+    if (m.touch) add("warn", "touch", "Shapes touch but aren't joined",
+      `They will break apart easily.`, `Push them into each other a little, then <b>Group</b> them.`);
+    if (m.overlaps) add("info", "overlap", "Shapes overlap",
+      `That's OK. The printer will join them.`, `Nothing to do.`);
     if (m.cavities) add("info", "cavity", "Hollow space inside",
-      `${m.cavities} sealed hollow space${m.cavities > 1 ? "s" : ""} inside the model.`, `Fine if that's on purpose. The slicer will print around it.`);
+      `There is an empty space inside your model.`, `That's OK if you meant to do it.`);
     // stability
     const h = m.dims[2];
-    if (m.bedArea < 1) add("error", "contact", "Touches the bed at a point or edge",
-      `Only ${f1(m.bedArea)} mm² sits flat on the build plate. It will pop off or wobble as it prints.`,
-      `Add a flat bottom: slice a little off the base, add a flat base plate, or rotate it so a flat face is down.`);
-    else if (m.bedArea < 25) add("warn", "contact", "Very small footprint on the bed",
-      `Only ${f1(m.bedArea)} mm² touches the build plate, which may not hold.`, `Rotate so a larger flat face is down, add a base, or ask for a brim.`);
+    if (m.bedArea < 1) add("error", "contact", "It barely touches the bed",
+      `Only a point or edge touches the bed. It will fall over while printing.`,
+      `Turn it so a flat side is down, or add a flat base.`);
+    else if (m.bedArea < 25) add("warn", "contact", "Small bottom",
+      `Only a small part touches the bed. It might come loose.`,
+      `Turn it so a bigger flat side is down, or add a base.`);
     if (m.bedArea >= 1 && h > 10) {
-      if (m.tipAngle < 0) add("warn", "tip", "Center of mass is outside the base",
-        `The model leans past its own footprint. It's held on only by bed adhesion and the nozzle can knock it off.`,
-        `Lay it on its side or back, widen the base, or plan for supports.`);
-      else if (m.tipAngle < 10) add("warn", "tip", "Tall and tippy",
-        `It would tip at about <b>${f1(m.tipAngle)}°</b> of lean (the base is ${f1(m.baseWidth)} mm wide; the center of mass is ${f1(m.comHeight)} mm up). The nozzle can knock it loose late in the print.`,
-        `Lay it on its side, add a wider foot, or ask for a brim.`);
+      if (m.tipAngle < 0) add("warn", "tip", "It will tip over",
+        `Its weight leans past its bottom.`, `Lay it on its side, or make the bottom wider.`);
+      else if (m.tipAngle < 10) add("warn", "tip", "Tall and wobbly",
+        `It is tall with a small bottom. The printer could knock it over.`,
+        `Lay it on its side, or make the bottom wider.`);
     }
     // overhangs
     const ovPct = m.area ? m.overhangArea / m.area * 100 : 0;
-    if (ovPct > 20) add("warn", "overhang", "Lots of steep overhangs",
-      `${f1(ovPct)}% of the surface faces downward at more than 45°. Those spots need supports, which add time and leave rough marks. Orange in the preview.`,
-      `Rotate the model so it builds upward without big ledges, add 45° chamfers under ledges, or split it into pieces.`);
-    else if (ovPct > 5) add("info", "overhang", "Some overhangs will need supports",
-      `${f1(ovPct)}% of the surface overhangs past 45° (orange in the preview).`, `Expect supports in those spots. Chamfering ledges to 45° can avoid them.`);
-    if (m.minFeature < 0.8 && maxDim >= 3) add("warn", "thin", "Very thin part",
-      `At least one piece is only ${m.minFeature.toFixed(2)} mm thick. Our 0.4 mm nozzle needs about 0.8 mm to print a solid wall.`, `Thicken it to <b>0.8 mm</b> or more (1.2 mm is safer).`);
-    if (m.tris > 1500000) add("info", "heavy", "Very detailed mesh",
-      `${m.tris.toLocaleString()} triangles. It's fine for printing but slow to load.`, `Export at a lower resolution if your tool offers it.`);
+    if (ovPct > 20) add("warn", "overhang", "Lots of parts hang over air",
+      `The orange parts stick out with nothing under them. They need extra supports. That takes longer and leaves rough spots.`,
+      `Turn your model, or change flat ledges into ramps (45°).`);
+    else if (ovPct > 5) add("info", "overhang", "Some parts hang over air",
+      `The orange parts will need supports.`, `That's OK. Ramps instead of flat ledges can help.`);
+    if (m.minFeature < 0.8 && maxDim >= 3) add("warn", "thin", "A part is too thin",
+      `One part is only ${m.minFeature.toFixed(1)} mm thick. It needs to be at least 0.8 mm.`, `Make it thicker. <b>1–2 mm</b> is best.`);
+    if (m.tris > 1500000) add("info", "heavy", "Very detailed file",
+      `It has lots of tiny triangles, so it loads slowly.`, `That's OK. You can save it with less detail.`);
     const rank = { error: 0, warn: 1, info: 2 };
     out.sort((a, b) => rank[a.sev] - rank[b.sev]);
     return out;
@@ -735,9 +735,11 @@ const Analyzer = (() => {
   function schedule(jobs, printers, now) {
     const free = {};
     printers.forEach(p => free[p.id] = now);
-    jobs.filter(j => j.status === "printing" && j.printerId && free[j.printerId] !== undefined).forEach(j => {
+    // printing jobs aren't tied to a printer; for estimates, each one fills the next free printer
+    jobs.filter(j => j.status === "printing").sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)).forEach(j => {
       const end = Math.max(now + 5 * 60000, (j.startedAt || now) + j._est.seconds * (j.qty || 1) * 1000);
-      free[j.printerId] = Math.max(free[j.printerId], end);
+      const p = printers.filter(p => p.online !== false).sort((a, b) => free[a.id] - free[b.id])[0];
+      if (p) free[p.id] = Math.max(free[p.id], end);
     });
     const out = {};
     const queued = jobs.filter(j => j.status === "queued").sort((a, b) => b._pr.score - a._pr.score);
@@ -861,8 +863,9 @@ const Viewer = (() => {
 /* ---------- app state ---------- */
 const DEFAULTS = {
   printers: [
-    { id: "p1", name: "Printer 1", x: 220, y: 220, z: 250, online: true },
-    { id: "p2", name: "Printer 2", x: 220, y: 220, z: 250, online: true },
+    { id: "p1", name: "Ender 3 KE #1", x: 220, y: 220, z: 240, online: true },
+    { id: "p2", name: "Ender 3 KE #2", x: 220, y: 220, z: 240, online: true },
+    { id: "p3", name: "Bambu Lab H2C", x: 325, y: 320, z: 320, online: true },
   ],
   est: { layerH: 0.2, infill: 0.2, wallMm: 1.2, flow: 6, density: 1.24, overhead: 1.25, heatup: 5 },
   weights: { due: 40, short: 20, filament: 10, wait: 15, quality: 15, urgent: 50 },
@@ -1047,13 +1050,13 @@ function renderReport() {
   $("#gline").textContent = `; ${d.name} · ${d.m.tris.toLocaleString()} triangles · ${d.m.shells} shell${d.m.shells === 1 ? "" : "s"} · ${est.layers} layers @ ${S.config.est.layerH.toFixed(2)} mm · ${Math.round(S.config.est.infill * 100)}% infill${q > 1 ? ` · ${q} copies` : ""}${d.metrics.watertight ? "" : " · estimate is rough (open mesh)"}`;
   const errs = d.issues.filter(i => i.sev === "error").length, warns = d.issues.filter(i => i.sev === "warn").length;
   const v = $("#verdict"); v.hidden = false;
-  if (errs) { v.dataset.tone = "bad"; v.innerHTML = `${errs} problem${errs > 1 ? "s" : ""} to fix <span>This would likely fail. Fix and upload again, or send it to your teacher for review.</span>`; }
-  else if (warns) { v.dataset.tone = "warn"; v.innerHTML = `Printable, with ${warns} thing${warns > 1 ? "s" : ""} to check <span>Read the notes below before you submit.</span>`; }
-  else { v.dataset.tone = "ok"; v.innerHTML = `Ready to print <span>No problems found.</span>`; }
+  if (errs) { v.dataset.tone = "bad"; v.innerHTML = `${errs} problem${errs > 1 ? "s" : ""} to fix · <span>It will probably fail. Fix it and upload again.</span>`; }
+  else if (warns) { v.dataset.tone = "warn"; v.innerHTML = `OK to print, but check ${warns} thing${warns > 1 ? "s" : ""} · <span>Read the notes below.</span>`; }
+  else { v.dataset.tone = "ok"; v.innerHTML = `Ready to print! · <span>No problems found.</span>`; }
   $("#issues").innerHTML = d.issues.length ? d.issues.map(i => `
     <li class="issue" data-sev="${i.sev}"><div class="ih"><h3>${esc(i.title)}</h3><span class="sev" data-sev="${i.sev}">${{ error: "Fix", warn: "Check", info: "Note" }[i.sev]}</span></div>
     <p>${i.detail}</p><p class="fix"><b>How to fix:</b> ${i.fix}</p></li>`).join("")
-    : `<li class="issue" data-sev="ok"><div class="ih"><h3>Closed, solid, sits flat</h3><span class="sev" data-sev="ok">Good</span></div><p>No holes, floating parts, gaps or stability problems found.</p></li>`;
+    : `<li class="issue" data-sev="ok"><div class="ih"><h3>Looks great</h3><span class="sev" data-sev="ok">Good</span></div><p>It is solid, sits flat and fits the printer.</p></li>`;
   const btn = $("#btnSubmit");
   btn.textContent = errs ? "Send to teacher for review" : "Add to queue";
   btn.disabled = !!d.isExample || !S.signedIn;
@@ -1148,20 +1151,15 @@ function renderQueue() {
     <div><b>${hrs.toFixed(1)} h</b><span class="muted">of printing queued</span></div>
     <div><b>${online}/${S.config.printers.length}</b><span class="muted">printers online</span></div>
     ${late ? `<div><b style="color:var(--bad)">${late}</b><span class="muted">projected late</span></div>` : ""}`;
-  $("#lanes").innerHTML = S.config.printers.map(p => {
-    const cur = printing.find(j => j.printerId === p.id);
-    const next = queued.filter(j => S.sched.slots[j.id] && S.sched.slots[j.id].printer && S.sched.slots[j.id].printer.id === p.id).slice(0, 4);
-    let body;
-    if (p.online === false) body = `<span class="pill">Offline</span>`;
-    else if (cur) {
-      const dur = cur._est.seconds * (cur.qty || 1) * 1000, el = now - (cur.startedAt || now), pct = Math.max(2, Math.min(100, el / dur * 100));
-      body = `<div><b>${esc(cur.projectName)}</b> <span class="muted">· ${esc(cur.studentName)}</span></div>
-        <div class="bar"><i style="width:${pct}%"></i></div>
-        <div class="muted mono" style="font-size:12px">done ≈ ${fmtWhen((cur.startedAt || now) + dur)}</div>`;
-    } else body = `<span class="pill" data-s="done">Idle</span>`;
-    return `<div class="lane panel"><div class="lh"><h3>${esc(p.name)}</h3><span class="muted mono" style="font-size:12px">${p.x}×${p.y}×${p.z}</span></div>${body}
-      ${next.length ? `<div><span class="label">Up next</span><ol>${next.map(j => `<li>${esc(j.projectName)} <span class="muted">· ${fmtWhen(S.sched.slots[j.id].start)}</span></li>`).join("")}</ol></div>` : ""}</div>`;
+  const printingCards = printing.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)).map(cur => {
+    const dur = cur._est.seconds * (cur.qty || 1) * 1000, el = now - (cur.startedAt || now), pct = Math.max(2, Math.min(100, el / dur * 100));
+    return `<div class="lane panel"><div class="lh"><h3>${esc(cur.projectName)}</h3><span class="pill" data-s="printing">Printing</span></div>
+      <div class="muted" style="font-size:13px">${esc(cur.studentName)}${cur.className ? " · " + esc(cur.className) : ""}</div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="muted mono" style="font-size:12px">started ${fmtWhen(cur.startedAt)} · done ≈ ${fmtWhen((cur.startedAt || now) + dur)}</div></div>`;
   }).join("");
+  $("#lanes").innerHTML = (printingCards || `<div class="lane panel"><div class="lh"><h3>Nothing printing right now</h3></div></div>`) +
+    `<div class="lane panel"><div class="lh"><h3>Printers</h3></div><ul style="margin:0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:3px">${S.config.printers.map(p => `<li>${esc(p.name)} <span class="muted mono">${p.x}×${p.y}×${p.z}</span>${p.online === false ? ` <span class="pill">Offline</span>` : ""}</li>`).join("")}</ul></div>`;
   if (!queued.length) {
     $("#queueTable").innerHTML = `<div class="panel empty-state"><h3>Nothing waiting</h3><p>When students submit models they'll line up here, highest priority first. Submit one from the <b>Submit a model</b> tab.</p></div>`;
     return;
@@ -1176,7 +1174,7 @@ function renderQueue() {
       <td><b>${esc(j.projectName)}</b>${j.qty > 1 ? ` <span class="muted">×${j.qty}</span>` : ""}<div class="muted" style="font-size:13px">${esc(j.studentName)}${j.className ? " · " + esc(j.className) : ""}${j.mine ? " · <b>yours</b>" : ""}</div></td>
       <td class="num">${fmtDur(j._est.seconds * (j.qty || 1))}<div class="muted" style="font-size:12px">${(j._est.grams * (j.qty || 1)).toFixed(0)} g</div></td>
       <td class="num">${fmtWhen(j.dueAt)}</td>
-      <td class="num">${sl.printer ? `${fmtWhen(sl.start)}<div class="muted" style="font-size:12px">${esc(sl.printer.name)}</div>` : `<span class="pill" data-s="late">No printer fits</span>`}</td>
+      <td class="num">${sl.printer ? fmtWhen(sl.start) : `<span class="pill" data-s="late">Too big</span>`}</td>
       <td><span class="score"><span class="mono">${j._pr.score.toFixed(0)}</span><span class="meter"><i style="width:${Math.min(100, j._pr.score)}%"></i></span></span></td>
       <td>${j.urgent ? `<span class="pill" data-s="urgent">Urgent</span> ` : ""}${sl.late ? `<span class="pill" data-s="late">Late</span> ` : ""}${warn ? `<span class="pill">${warn} check${warn > 1 ? "s" : ""}</span>` : ""}</td>
     </tr>${open ? `<tr class="detail"><td colspan="8">${breakdown(j)}</td></tr>` : ""}`;
@@ -1205,14 +1203,13 @@ function jobCard(j, teacher) {
   const pos = j.status === "queued" ? positionOf(j) : null;
   const est = j._est ? `${fmtDur(j._est.seconds * (j.qty || 1))} · ${(j._est.grams * (j.qty || 1)).toFixed(0)} g` : "";
   let where = "";
-  if (j.status === "queued") where = sl.printer ? `#${pos} in line · starts ≈ ${fmtWhen(sl.start)} on ${esc(sl.printer.name)}${sl.late ? ` · <b style="color:var(--bad)">may finish after it's due</b>` : ""}` : "No printer is big enough";
-  else if (j.status === "printing") { const pr = S.config.printers.find(p => p.id === j.printerId); where = `On ${esc(pr ? pr.name : "a printer")} · done ≈ ${fmtWhen((j.startedAt || Date.now()) + (j._est ? j._est.seconds * (j.qty || 1) * 1000 : 0))}`; }
+  if (j.status === "queued") where = sl.printer ? `#${pos} in line · starts ≈ ${fmtWhen(sl.start)}${sl.late ? ` · <b style="color:var(--bad)">may finish after it's due</b>` : ""}` : "No printer is big enough";
+  else if (j.status === "printing") { where = `Printing · done ≈ ${fmtWhen((j.startedAt || Date.now()) + (j._est ? j._est.seconds * (j.qty || 1) * 1000 : 0))}`; }
   else if (j.status === "done") where = `Printed ${fmtWhen(j.finishedAt)}${j.actualMin ? ` · took ${fmtDur(j.actualMin * 60)}` : ""}`;
   const issues = (j.issues || []).filter(i => i.sev !== "info");
   let actions = "";
   if (teacher) {
-    const opts = S.config.printers.map(p => `<option value="${p.id}" ${(sl.printer && sl.printer.id === p.id) || j.printerId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
-    if (j.status === "queued" || j.status === "needs_fix") actions += `<select aria-label="Printer" data-printer="${j.id}">${opts}</select><button class="btn small primary" data-act="start" data-id="${j.id}">Start printing</button>`;
+    if (j.status === "queued" || j.status === "needs_fix") actions += `<button class="btn small primary" data-act="start" data-id="${j.id}">Mark printing</button>`;
     if (j.status === "needs_fix") actions += `<button class="btn small" data-act="approve" data-id="${j.id}">Approve for queue</button>`;
     if (j.status === "printing") actions += `<button class="btn small primary" data-act="done" data-id="${j.id}">Mark printed</button><button class="btn small" data-act="failed" data-id="${j.id}">Failed, requeue</button>`;
     if (j.status === "done" && !j.archived) actions += `<button class="btn small" data-act="archive" data-id="${j.id}">Archive</button>`;
@@ -1322,19 +1319,10 @@ function confirmBox(root, id, html, onOk) {
 }
 async function act(a, id, root) {
   const j = S.jobs.find(x => x.id === id); if (!j || !S.signedIn) return;
-  if (a === "start") {
-    const sel = root.querySelector(`[data-printer="${id}"]`), pid = sel ? sel.value : (S.config.printers[0] || {}).id;
-    const busy = S.jobs.find(x => x.status === "printing" && x.printerId === pid);
-    if (busy) { toast(`${(S.config.printers.find(p => p.id === pid) || {}).name || "That printer"} is busy with "${busy.projectName}". Mark it printed first.`); return; }
-    return updateJob(id, { status: "printing", printerId: pid, startedAt: Date.now() }, "Started.");
-  }
+  if (a === "start") return updateJob(id, { status: "printing", printerId: null, startedAt: Date.now() }, "Marked as printing.");
   if (a === "approve") return updateJob(id, { status: "queued", teacherNote: "" }, "Approved for the queue.");
   if (a === "urgent") return updateJob(id, { urgent: !j.urgent });
-  if (a === "done") {
-    const elapsed = j.startedAt ? Math.round((Date.now() - j.startedAt) / 60000) : "";
-    return confirmBox(root, id, `<label class="label" for="am-${id}">Actual print time (min)</label><input id="am-${id}" type="number" min="1" value="${elapsed}"><div class="actions" style="margin-top:6px"><button class="btn small primary" data-ok>Save</button><button class="btn small" data-no>Cancel</button></div>`,
-      box => { const v = +box.querySelector("input").value; updateJob(id, { status: "done", finishedAt: Date.now(), actualMin: v > 0 ? v : null, archived: true, archivedAt: Date.now() }, "Marked printed and archived."); });
-  }
+  if (a === "done") return updateJob(id, { status: "done", finishedAt: Date.now(), archived: true, archivedAt: Date.now() }, "Marked printed and archived.");
   if (a === "archive") return updateJob(id, { archived: true, archivedAt: Date.now() }, "Archived.");
   if (a === "restore") return confirmBox(root, id, `<span style="font-size:13px">Put "${esc(j.projectName)}" back in the queue to print again?</span><div class="actions" style="margin-top:6px"><button class="btn small primary" data-ok>Requeue</button><button class="btn small" data-no>Cancel</button></div>`,
     () => updateJob(id, { status: "queued", archived: false, archivedAt: null, printerId: null, startedAt: null, finishedAt: null }, "Back in the queue."));
@@ -1368,7 +1356,7 @@ function buildSettings() {
   $("#weightFields").querySelectorAll("input").forEach(i => i.addEventListener("input", () => $("#wv-" + i.dataset.w).textContent = i.value));
   $("#teacherList").value = (c.teachers || []).join("\n");
   const cal = S.cal || { f: 1, n: 0 };
-  $("#calibNote").textContent = cal.n >= 2 ? `Times are calibrated from ${cal.n} finished prints (×${cal.f.toFixed(2)}).` : "Enter actual times when you mark jobs printed and estimates will calibrate themselves.";
+  $("#calibNote").textContent = cal.n >= 2 ? `Times are calibrated from ${cal.n} finished prints (×${cal.f.toFixed(2)}).` : "";
 }
 $("#btnSaveSettings").addEventListener("click", async () => {
   const printers = [...$("#printerRows").querySelectorAll("[data-pid]")].map(r => ({
