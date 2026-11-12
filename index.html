@@ -75,6 +75,15 @@ h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0;text-wra
 .viewer .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .viewer .vtools{position:absolute;right:10px;top:10px;display:flex;gap:6px}
 .viewer .tag{position:absolute;left:10px;top:10px;font-size:12px;font-weight:700;background:var(--warn-soft);color:var(--warn);padding:3px 8px;border-radius:6px}
+.markers{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.mk{position:absolute;transform:translate(-50%,-50%);min-width:24px;height:24px;padding:0 6px;border-radius:12px;display:grid;place-items:center;font:700 12px/1 var(--f-body);color:#fff;background:#D92D20;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transition:transform .15s}
+.mk[data-sev="warn"]{background:#B45F00}
+.mk[data-sev="info"]{background:#3C5A99}
+.mk.hot{transform:translate(-50%,-50%) scale(1.4);z-index:2}
+.issue .num{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:11px;font-size:12px;font-weight:700;color:#fff;background:#D92D20;margin-right:8px;vertical-align:2px}
+.issue .num[data-sev="warn"]{background:#B45F00}
+.issue .num[data-sev="info"]{background:#3C5A99}
+.issue .whole{font-family:var(--f-body);font-size:12px;font-weight:400;color:var(--muted);margin-left:6px}
 .viewer .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:20px}
 .drop{border:2px dashed var(--line);border-radius:var(--r);padding:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px;background:var(--surface);cursor:pointer}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
@@ -202,6 +211,7 @@ mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
       <div>
         <div class="viewer" id="viewer">
           <canvas id="cv" aria-label="3D preview of the model"></canvas>
+          <div class="markers" id="markers" aria-hidden="true"></div>
           <div class="empty" id="viewerEmpty" hidden>3D preview isn't available in this browser. The checks still run.</div>
           <span class="tag" id="exampleTag" hidden>Example model</span>
           <div class="vtools">
@@ -447,13 +457,13 @@ const Analyzer = (() => {
         eDir.set(key, (eDir.get(key) || 0) + (p < q ? 1 : -1));
       }
     }
-    let boundary = 0, nonManifold = 0, flipped = 0;
+    let boundary = 0, nonManifold = 0, flipped = 0, nmPt = null;
     const bSegs = [];
     for (const [key, cnt] of eCount) {
       if (cnt === 1) {
         boundary++;
         if (bSegs.length < 60000) { const p = Math.floor(key / V), q = key - p * V; bSegs.push(vx[p], vy[p], vz[p], vx[q], vy[q], vz[q]); }
-      } else if (cnt > 2) nonManifold++;
+      } else if (cnt > 2) { if (!nmPt) { const p = Math.floor(key / V), q = key - p * V; nmPt = [(vx[p] + vx[q]) / 2, (vy[p] + vy[q]) / 2, (vz[p] + vz[q]) / 2]; } nonManifold++; }
       else if (eDir.get(key) !== 0) flipped++;
     }
     // components
@@ -469,7 +479,7 @@ const Analyzer = (() => {
     }
     const flags = new Uint8Array(T);
     const bedTol = 0.2;
-    let volume = 0, area = 0, cx = 0, cy = 0, cz = 0, bedArea = 0, ovArea = 0, ovH = 0, ceilArea = 0;
+    let volume = 0, area = 0, cx = 0, cy = 0, cz = 0, bedArea = 0, ovArea = 0, ovH = 0, ceilArea = 0, ovX = 0, ovY = 0, ovZ = 0;
     const triComp = new Int32Array(T).fill(-1);
     for (let t = 0; t < T; t++) {
       if (!triOk[t]) continue;
@@ -498,7 +508,7 @@ const Analyzer = (() => {
       const tMax = Math.max(az, bz, qz), tMin = Math.min(az, bz, qz);
       if (tMax <= minZ + bedTol && nzn < -0.9) { flags[t] |= 1; bedArea += A; }
       else if (nzn < -0.7071 && tMin > minZ + bedTol) {
-        flags[t] |= 2; ovArea += A; ovH += A * ((az + bz + qz) / 3 - minZ);
+        flags[t] |= 2; ovArea += A; ovH += A * ((az + bz + qz) / 3 - minZ); ovX += A * (ax + bx + qx) / 3; ovY += A * (ay + by + qy) / 3; ovZ += A * (az + bz + qz) / 3;
         if (nzn < -0.97) ceilArea += A;
       }
     }
@@ -514,6 +524,7 @@ const Analyzer = (() => {
     const pairs = [];
     const relate = new Map(); // pair key -> min distance (mm)
     const inside = new Set(); // pair keys where one shell pokes into the other
+    const relPt = new Map(); // pair key -> point where the two shells come closest
     const isShell = new Uint8Array(C); shells.forEach(c => isShell[c.i] = 1);
     if (shells.length > 1 && shells.length <= 300) {
       // triangle grid: each triangle registered in every cell its (expanded) bbox touches
@@ -550,7 +561,7 @@ const Analyzer = (() => {
             const nl = Math.hypot(nx, ny, nz) || 1;
             if (s / nl < -0.005) { inside.add(key); d = 0; }
           }
-          if (prev === undefined || d < prev) relate.set(key, d);
+          if (prev === undefined || d < prev) { relate.set(key, d); relPt.set(key, [vx[i], vy[i], vz[i]]); }
         }
       }
       // bbox overlap → intersecting shells
@@ -561,9 +572,9 @@ const Analyzer = (() => {
         const i1 = Math.min(A.i, B.i), i2 = Math.max(A.i, B.i);
         const d = relate.get(i1 * C + i2);
         if (inside.has(i1 * C + i2)) pairs.push({ a: i1, b: i2, kind: "overlap", d: 0 });
-        else if (d !== undefined && d >= 0.01) pairs.push({ a: i1, b: i2, kind: "gap", d });
+        else if (d !== undefined && d >= 0.01) pairs.push({ a: i1, b: i2, kind: "gap", d, p: relPt.get(i1 * C + i2) });
         else if (ov > 0.2) pairs.push({ a: i1, b: i2, kind: "overlap", d: 0 });
-        else if (d !== undefined) pairs.push({ a: i1, b: i2, kind: "touch", d });
+        else if (d !== undefined) pairs.push({ a: i1, b: i2, kind: "touch", d, p: relPt.get(i1 * C + i2) });
       }
     }
     // grounding
@@ -589,6 +600,38 @@ const Analyzer = (() => {
     const tipAngle = isFinite(margin) ? Math.atan2(margin, comH) * 180 / Math.PI : -90;
     const baseWidth = 2 * Math.sqrt(Math.max(hullArea, 1e-6) / Math.PI);
     let minWall = Infinity; shells.forEach(c => { for (let k = 0; k < 3; k++) minWall = Math.min(minWall, c.max[k] - c.min[k]); });
+    // a representative point for each kind of problem, for numbered pins on the 3D view
+    const spots = {};
+    if (bSegs.length) {
+      const n = bSegs.length / 6; let sx = 0, sy = 0, sz = 0;
+      for (let k = 0; k < bSegs.length; k += 6) { sx += bSegs[k] + bSegs[k + 3]; sy += bSegs[k + 1] + bSegs[k + 4]; sz += bSegs[k + 2] + bSegs[k + 5]; }
+      sx /= 2 * n; sy /= 2 * n; sz /= 2 * n;
+      let best = Infinity;
+      for (let k = 0; k < bSegs.length; k += 6) {
+        const mx = (bSegs[k] + bSegs[k + 3]) / 2, my = (bSegs[k + 1] + bSegs[k + 4]) / 2, mz = (bSegs[k + 2] + bSegs[k + 5]) / 2;
+        const dd = (mx - sx) ** 2 + (my - sy) ** 2 + (mz - sz) ** 2;
+        if (dd < best) { best = dd; spots.holes = [mx, my, mz]; }
+      }
+    }
+    if (nmPt) spots.nonmanifold = nmPt;
+    if (floating.length) { const c = floating[0]; spots.floating = [(c.min[0] + c.max[0]) / 2, (c.min[1] + c.max[1]) / 2, (c.min[2] + c.max[2]) / 2]; }
+    const gp = pairs.filter(p => p.kind === "gap" && p.p).sort((a, b) => a.d - b.d)[0]; if (gp) spots.gap = gp.p;
+    const tp = pairs.find(p => p.kind === "touch" && p.p); if (tp) spots.touch = tp.p;
+    if (hull.length) { let hx = 0, hy = 0; hull.forEach(p => { hx += p[0]; hy += p[1]; }); spots.contact = [hx / hull.length, hy / hull.length, minZ]; }
+    else spots.contact = [(minX + maxX) / 2, (minY + maxY) / 2, minZ];
+    spots.tip = com.slice();
+    if (ovArea > 0) {
+      const gx = ovX / ovArea, gy = ovY / ovArea, gz = ovZ / ovArea; let best = Infinity;
+      for (let t = 0; t < T; t++) {
+        if (!(flags[t] & 2)) continue;
+        const o = t * 9, x = (pos[o] + pos[o + 3] + pos[o + 6]) / 3, y = (pos[o + 1] + pos[o + 4] + pos[o + 7]) / 3, z = (pos[o + 2] + pos[o + 5] + pos[o + 8]) / 3;
+        const dd = (x - gx) ** 2 + (y - gy) ** 2 + (z - gz) ** 2;
+        if (dd < best) { best = dd; spots.overhang = [x, y, z]; }
+      }
+    }
+    let thinC = null, thinD = Infinity;
+    shells.forEach(c => { const md = Math.min(c.max[0] - c.min[0], c.max[1] - c.min[1], c.max[2] - c.min[2]); if (md < thinD) { thinD = md; thinC = c; } });
+    if (thinC) spots.thin = [(thinC.min[0] + thinC.max[0]) / 2, (thinC.min[1] + thinC.max[1]) / 2, (thinC.min[2] + thinC.max[2]) / 2];
     return {
       tris: T, verts: V, dims, min: [minX, minY, minZ], max: [maxX, maxY, maxZ],
       volume: Math.abs(volume), area, inverted, com,
@@ -600,7 +643,7 @@ const Analyzer = (() => {
       overlaps: pairs.filter(p => p.kind === "overlap").length,
       bedArea, hullArea, tipAngle, baseWidth, comHeight: comH,
       overhangArea: ovArea, overhangAvgH: ovArea ? ovH / ovArea : 0, ceilArea, minFeature: minWall,
-      flags, boundarySegs: new Float32Array(bSegs),
+      flags, boundarySegs: new Float32Array(bSegs), spots,
     };
   }
 
@@ -689,6 +732,7 @@ const Analyzer = (() => {
       `It has lots of tiny triangles, so it loads slowly.`, `That's OK. You can save it with less detail.`);
     const rank = { error: 0, warn: 1, info: 2 };
     out.sort((a, b) => rank[a.sev] - rank[b.sev]);
+    out.forEach(i => { if (m.spots && m.spots[i.code]) i.at = m.spots[i.code]; });
     return out;
   }
 
@@ -765,9 +809,10 @@ const Analyzer = (() => {
 const Viewer = (() => {
   let renderer, scene, camera, group, cv, ok = false;
   const st = { theta: -0.9, phi: 1.05, dist: 200, target: null, size: 100 };
-  let showIssues = true, last = null;
+  let showIssues = true, last = null, off = [0, 0, 0], marks = [], mkEl = null;
   function init(canvas) {
     cv = canvas;
+    mkEl = document.getElementById("markers");
     if (!window.THREE) return false;
     try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: true }); }
     catch (e) { return false; }
@@ -800,6 +845,7 @@ const Viewer = (() => {
     if (group) { scene.remove(group); group.traverse(o => { o.geometry && o.geometry.dispose(); o.material && o.material.dispose(); }); }
     group = new THREE.Group();
     const ox = -(m.min[0] + m.max[0]) / 2, oy = -(m.min[1] + m.max[1]) / 2, oz = -m.min[2];
+    off = [ox, oy, oz];
     const g = new THREE.BufferGeometry();
     const p = new Float32Array(pos.length);
     for (let i = 0; i < pos.length; i += 3) { p[i] = pos[i] + ox; p[i + 1] = pos[i + 1] + oy; p[i + 2] = pos[i + 2] + oz; }
@@ -843,8 +889,33 @@ const Viewer = (() => {
       st.target.z + st.dist * Math.cos(st.phi));
     camera.lookAt(st.target);
     renderer.render(scene, camera);
+    placeMarks();
   }
   function reset() { st.theta = -0.9; st.phi = 1.05; if (last) st.dist = st.size * 2.6; draw(); }
+  function setMarkers(list) {
+    if (!mkEl) return;
+    mkEl.innerHTML = ""; marks = [];
+    if (!ok) return;
+    for (const it of list) {
+      const el = document.createElement("span");
+      el.className = "mk"; el.dataset.sev = it.sev; el.textContent = it.n;
+      mkEl.appendChild(el);
+      marks.push({ n: it.n, el, v: new THREE.Vector3(it.at[0] + off[0], it.at[1] + off[1], it.at[2] + off[2]) });
+    }
+    draw();
+  }
+  function placeMarks() {
+    if (!marks.length) return;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    for (const mk of marks) {
+      const p = mk.v.clone().project(camera);
+      if (!showIssues || p.z > 1 || p.z < -1) { mk.el.hidden = true; continue; }
+      mk.el.hidden = false;
+      mk.el.style.left = ((p.x + 1) / 2 * w) + "px";
+      mk.el.style.top = ((1 - p.y) / 2 * h) + "px";
+    }
+  }
+  function hot(n, on) { const mk = marks.find(x => x.n === n); if (mk) mk.el.classList.toggle("hot", on); }
   function toggleIssues() { showIssues = !showIssues; if (last) show(last.pos, last.m, last.bed); return showIssues; }
   function thumb(w = 160, h = 120) {
     if (!ok) return "";
@@ -857,7 +928,7 @@ const Viewer = (() => {
     return c.toDataURL("image/jpeg", 0.72);
   }
   function blob() { return new Promise(res => { if (!ok) return res(null); draw(); cv.toBlob(b => res(b), "image/png"); }); }
-  return { init, show, reset, toggleIssues, thumb, blob, redraw: () => last && show(last.pos, last.m, last.bed) };
+  return { init, show, reset, toggleIssues, thumb, blob, setMarkers, hot, redraw: () => last && show(last.pos, last.m, last.bed) };
 })();
 
 /* ---------- app state ---------- */
@@ -1053,10 +1124,16 @@ function renderReport() {
   if (errs) { v.dataset.tone = "bad"; v.innerHTML = `${errs} problem${errs > 1 ? "s" : ""} to fix · <span>It will probably fail. Fix it and upload again.</span>`; }
   else if (warns) { v.dataset.tone = "warn"; v.innerHTML = `OK to print, but check ${warns} thing${warns > 1 ? "s" : ""} · <span>Read the notes below.</span>`; }
   else { v.dataset.tone = "ok"; v.innerHTML = `Ready to print! · <span>No problems found.</span>`; }
-  $("#issues").innerHTML = d.issues.length ? d.issues.map(i => `
-    <li class="issue" data-sev="${i.sev}"><div class="ih"><h3>${esc(i.title)}</h3><span class="sev" data-sev="${i.sev}">${{ error: "Fix", warn: "Check", info: "Note" }[i.sev]}</span></div>
+  $("#issues").innerHTML = d.issues.length ? d.issues.map((i, k) => `
+    <li class="issue" data-sev="${i.sev}" data-n="${k + 1}"><div class="ih"><h3><span class="num" data-sev="${i.sev}">${k + 1}</span>${esc(i.title)}${i.at ? "" : ` <span class="whole">whole model</span>`}</h3><span class="sev" data-sev="${i.sev}">${{ error: "Fix", warn: "Check", info: "Note" }[i.sev]}</span></div>
     <p>${i.detail}</p><p class="fix"><b>How to fix:</b> ${i.fix}</p></li>`).join("")
     : `<li class="issue" data-sev="ok"><div class="ih"><h3>Looks great</h3><span class="sev" data-sev="ok">Good</span></div><p>It is solid, sits flat and fits the printer.</p></li>`;
+  Viewer.setMarkers(d.issues.map((i, k) => ({ n: k + 1, sev: i.sev, at: i.at })).filter(x => x.at));
+  document.querySelectorAll("#issues li[data-n]").forEach(li => {
+    const n = +li.dataset.n;
+    li.addEventListener("mouseenter", () => Viewer.hot(n, true));
+    li.addEventListener("mouseleave", () => Viewer.hot(n, false));
+  });
   const btn = $("#btnSubmit");
   btn.textContent = errs ? "Send to teacher for review" : "Add to queue";
   btn.disabled = !!d.isExample || !S.signedIn;
