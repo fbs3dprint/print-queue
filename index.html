@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Makerspace Print Queue</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cstyle%3E.f%7Bfill:%23111%7D%3C/style%3E%3Crect class='f' x='3' y='3' width='26' height='4'/%3E%3Crect class='f' x='3' y='3' width='4' height='26'/%3E%3Crect class='f' x='25' y='3' width='4' height='26'/%3E%3Crect class='f' x='3' y='25' width='26' height='4'/%3E%3Crect class='f' x='7' y='10' width='18' height='3'/%3E%3Cpath fill='%23E2001A' d='M12.5 12h7v3.5L16 19l-3.5-3.5z'/%3E%3Crect fill='%23E2001A' x='13' y='20' width='6' height='3'/%3E%3Crect class='f' x='9' y='23' width='14' height='2'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
@@ -101,6 +102,7 @@ h3{font-family:var(--f-display);font-weight:700;font-size:16px;letter-spacing:-.
 .viewer .vtools .btn:hover,.viewer .vtools .btn[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 .viewer .tag{position:absolute;left:0;top:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;background:var(--warn-fill);color:var(--warn-ink);padding:6px 10px}
 .viewer .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:20px}
+.below-viewer{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .markers{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .mk{position:absolute;transform:translate(-50%,-50%);min-width:24px;height:24px;padding:0 6px;display:grid;place-items:center;font:700 12px/1 var(--f-body);color:#fff;background:var(--bad-fill);transition:transform .15s}
 .mk[data-sev="warn"]{background:var(--warn-fill);color:#111}
@@ -245,23 +247,28 @@ mark{background:var(--warn-soft);color:inherit;padding:0 1px}
             Upload 3D Model
           </button>
           <span class="muted" style="font-size:13px">STL file, in millimeters</span>
-          <button type="button" class="btn small" id="btnExample" style="margin-left:auto">Load example</button>
         </div>
         <div class="viewer" id="viewer">
           <canvas id="cv" aria-label="3D preview of the model"></canvas>
           <div class="markers" id="markers" aria-hidden="true"></div>
+          <div class="empty" id="viewerPlaceholder">
+            <div><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+            <p style="margin:8px 0 0;font-weight:600">Your model will show up here</p>
+            <p style="margin:2px 0 0;font-size:13px">Click <b>Upload 3D Model</b>, or drag an STL file here.</p></div>
+          </div>
           <div class="empty" id="viewerEmpty" hidden>3D preview isn't available in this browser. The checks still run.</div>
           <span class="tag" id="exampleTag" hidden>Example model</span>
-          <div class="vtools">
+          <div class="vtools" id="vtools" hidden>
             <button class="btn small" id="btnIssues" aria-pressed="true">Highlight issues</button>
             <button class="btn small" id="btnReset">Reset view</button>
           </div>
-          <div class="legend">
+          <div class="legend" id="legend" hidden>
             <span><i style="background:#27AE60"></i>Touches the bed</span>
             <span><i style="background:#E67E22"></i>Hangs over air</span>
             <span><i style="background:#E74C3C"></i>Floating part or hole</span>
           </div>
         </div>
+        <div class="below-viewer"><button type="button" class="btn small" id="btnExample">Load example model</button><span class="muted" style="font-size:13px">See what the checks look like</span></div>
       </div>
 
       <div id="report">
@@ -947,6 +954,11 @@ const Viewer = (() => {
       mk.el.style.top = ((1 - p.y) / 2 * h) + "px";
     }
   }
+  function clear() {
+    last = null; marks = []; if (mkEl) mkEl.innerHTML = "";
+    if (group) { scene.remove(group); group.traverse(o => { o.geometry && o.geometry.dispose(); o.material && o.material.dispose(); }); group = null; }
+    draw();
+  }
   function hot(n, on) { const mk = marks.find(x => x.n === n); if (mk) mk.el.classList.toggle("hot", on); }
   function toggleIssues() { showIssues = !showIssues; if (last) show(last.pos, last.m, last.bed); return showIssues; }
   function thumb(w = 160, h = 120) {
@@ -960,7 +972,7 @@ const Viewer = (() => {
     return c.toDataURL("image/jpeg", 0.72);
   }
   function blob() { return new Promise(res => { if (!ok) return res(null); draw(); cv.toBlob(b => res(b), "image/png"); }); }
-  return { init, show, reset, toggleIssues, thumb, blob, setMarkers, hot, redraw: () => last && show(last.pos, last.m, last.bed) };
+  return { init, show, reset, toggleIssues, thumb, blob, setMarkers, hot, clear, redraw: () => last && show(last.pos, last.m, last.bed) };
 })();
 
 /* ---------- app state ---------- */
@@ -1136,6 +1148,7 @@ function loadBuffer(buf, name, isExample) {
   const issues = Analyzer.buildIssues(m, S.config.printers);
   S.draft = { pos, m, issues, name, buf, isExample, metrics: Analyzer.metrics(m) };
   $("#exampleTag").hidden = !isExample;
+  setViewerEmpty(false);
   const p = S.config.printers.find(p => p.online !== false) || S.config.printers[0];
   Viewer.show(pos, m, p);
   if (!$("#fProject").value && !isExample) $("#fProject").value = name.replace(/\.stl$/i, "").replace(/[_-]+/g, " ");
@@ -1213,6 +1226,11 @@ function makeExampleSTL() {
   for (let i = 0; i < n; i++) for (let k = 0; k < 9; k++) dv.setFloat32(84 + i * 50 + 12 + k * 4, t[i * 9 + k], true);
   return buf;
 }
+function setViewerEmpty(empty) {
+  $("#viewerPlaceholder").hidden = !empty || !$("#viewerEmpty").hidden;
+  $("#vtools").hidden = empty; $("#legend").hidden = empty;
+  if (empty) { $("#exampleTag").hidden = true; Viewer.clear(); }
+}
 function loadExample() { loadBuffer(makeExampleSTL(), "example-trophy.stl", true); }
 
 $("#jobForm").addEventListener("submit", async e => {
@@ -1237,7 +1255,7 @@ $("#jobForm").addEventListener("submit", async e => {
   try {
     await API.call("submit", { job, fileB64: bufToB64(d.buf) });
     toast(errs ? "Sent to your teacher for review." : "Added to the queue.");
-    S.draft = null; $("#issues").innerHTML = ""; $("#readout").innerHTML = ""; $("#verdict").hidden = true; $("#gline").textContent = "";
+    S.draft = null; setViewerEmpty(true); $("#issues").innerHTML = ""; $("#readout").innerHTML = ""; $("#verdict").hidden = true; $("#gline").textContent = "";
     $("#fProject").value = ""; $("#fNotes").value = "";
     setView("mine");
   } catch (err) {
@@ -1525,10 +1543,9 @@ setInterval(() => { if (S.view === "queue" || S.view === "mine" || S.view === "t
 
 function boot() {
   const ok = Viewer.init($("#cv"));
-  if (!ok) $("#viewerEmpty").hidden = false;
+  if (!ok) { $("#viewerEmpty").hidden = false; $("#viewerPlaceholder").hidden = true; }
   const h = (location.hash || "").slice(1);
   if (["submit", "queue", "mine"].includes(h)) S.view = h;
-  loadExample();
   setView(S.view);
   if (!configured()) { renderAuth(); showBanner("This site isn't connected to its Google Apps Script yet. Fill in config.js (setup guide, step 5). Model checks still work."); return; }
   setSignedOut();
