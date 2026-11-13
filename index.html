@@ -165,6 +165,8 @@ td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:n
 .card .cact{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:170px}
 .card .cact select{font-size:13px;padding:5px 8px}
 .note{font-size:13px;margin-top:6px;padding:6px 10px;border-radius:6px;background:var(--warn-soft)}
+.card .confirm{grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px;max-width:560px}
+.card .confirm textarea,.card .confirm input{width:100%}
 .mini-issues{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 details.settings{margin-top:28px}
 details.settings summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font-size:18px;padding:12px 0}
@@ -1068,6 +1070,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 
 /* ---------- views ---------- */
 function setView(v) {
+  closeConfirm(true);
   if (v === "teacher" && !S.canEdit) v = "queue";
   S.view = v;
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v));
@@ -1299,8 +1302,7 @@ function jobCard(j, teacher) {
       <button class="btn small" data-act="sendback" data-id="${j.id}">Send back…</button>
       <button class="btn small danger" data-act="remove" data-id="${j.id}">Remove</button>`;
     if (j.driveUrl) actions += `<a class="btn small" href="${esc(j.driveUrl)}" target="_blank" rel="noopener">Open in Drive</a>`;
-    actions += `<div data-confirm="${j.id}" hidden></div>`;
-  } else if (j.status === "queued" || j.status === "needs_fix") actions = `<button class="btn small danger" data-act="cancel" data-id="${j.id}">Cancel</button><div data-confirm="${j.id}" hidden></div>`;
+  } else if (j.status === "queued" || j.status === "needs_fix") actions = `<button class="btn small danger" data-act="cancel" data-id="${j.id}">Cancel</button>`;
   return `<div class="card panel">
     ${j.thumb ? `<img class="thumb" src="${esc(j.thumb)}" alt="">` : `<div class="thumb"></div>`}
     <div style="min-width:0">
@@ -1313,9 +1315,11 @@ function jobCard(j, teacher) {
       ${teacher && j.driveError ? `<div class="muted" style="font-size:13px;margin-top:4px">Drive: ${esc(j.driveError)}</div>` : ""}
     </div>
     <div class="cact">${actions}</div>
+    <div class="confirm" data-confirm="${j.id}" hidden></div>
   </div>`;
 }
 function renderMine() {
+  if (S.confirmOpen) return;
   const el = $("#mine");
   if (!S.signedIn) { el.innerHTML = signInPanel("see your prints"); return; }
   const mine = S.jobs.filter(j => j.mine && j.status !== "cancelled").sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
@@ -1325,6 +1329,7 @@ function renderMine() {
 
 /* ----- teacher ----- */
 function renderTeacher() {
+  if (S.confirmOpen) return; // don't redraw while a note box is open
   document.querySelectorAll("#tFilter button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === S.tFilter));
   const f = S.tFilter;
   const order = { printing: 0, needs_fix: 1, queued: 2, done: 3, failed: 4, cancelled: 5 };
@@ -1361,7 +1366,7 @@ function renderTeacher() {
   const c = S.config;
   $("#driveStatus").innerHTML = `Files save to Google Drive as students submit.${c.driveFolderUrl ? ` <a href="${esc(c.driveFolderUrl)}" target="_blank" rel="noopener">Uploads folder</a>` : ""}${c.driveArchiveFolderUrl ? ` · <a href="${esc(c.driveArchiveFolderUrl)}" target="_blank" rel="noopener">Archive</a>` : ""}${c.sheetUrl ? ` · <a href="${esc(c.sheetUrl)}" target="_blank" rel="noopener">Queue spreadsheet</a>` : ""}`;
 }
-document.querySelectorAll("#tFilter button").forEach(b => b.addEventListener("click", () => { S.tFilter = b.dataset.f; renderTeacher(); }));
+document.querySelectorAll("#tFilter button").forEach(b => b.addEventListener("click", () => { closeConfirm(true); S.tFilter = b.dataset.f; renderTeacher(); }));
 // lower = more printable: errors weigh most, then warnings, then notes
 function printability(j) { const is = j.issues || []; return is.reduce((s, i) => s + (i.sev === "error" ? 100 : i.sev === "warn" ? 10 : 1), 0); }
 const SORT_DIR = {
@@ -1372,9 +1377,9 @@ S.tQuery = ""; S.tSort = "status"; S.tDir = 1;
 try { const s = JSON.parse(localStorage.getItem("pq-tsort") || "{}"); if (SORT_DIR[s.sort]) { S.tSort = s.sort; S.tDir = s.dir === -1 ? -1 : 1; } } catch (e) {}
 $("#tSort").value = S.tSort;
 const saveSort = () => { try { localStorage.setItem("pq-tsort", JSON.stringify({ sort: S.tSort, dir: S.tDir })); } catch (e) {} };
-$("#tSearch").addEventListener("input", e => { S.tQuery = e.target.value; renderTeacher(); });
-$("#tSort").addEventListener("change", e => { S.tSort = e.target.value; S.tDir = 1; saveSort(); renderTeacher(); });
-$("#tDir").addEventListener("click", () => { S.tDir = -S.tDir; saveSort(); renderTeacher(); });
+$("#tSearch").addEventListener("input", e => { closeConfirm(true); S.tQuery = e.target.value; renderTeacher(); });
+$("#tSort").addEventListener("change", e => { closeConfirm(true); S.tSort = e.target.value; S.tDir = 1; saveSort(); renderTeacher(); });
+$("#tDir").addEventListener("click", () => { closeConfirm(true); S.tDir = -S.tDir; saveSort(); renderTeacher(); });
 $("#btnArchiveAll").addEventListener("click", async e => {
   const btn = e.currentTarget; btn.disabled = true;
   try { const r = await API.call("archiveAll"); toast(`Archived ${r.count} job${r.count === 1 ? "" : "s"}.`); }
@@ -1388,15 +1393,29 @@ function wireActions(root) {
 async function updateJob(id, patch, msg) {
   S.busy = true;
   try { await API.call("update", { id, patch }); if (msg) toast(msg); }
-  catch (e) { console.warn(e); toast("Couldn't save that change: " + e.message); }
+  catch (e) { console.warn(e); toast("Couldn't save that change: " + e.message); render(); }
   finally { S.busy = false; }
 }
 function confirmBox(root, id, html, onOk) {
+  if (S.confirmOpen && S.confirmOpen !== id) closeConfirm(true);
   const box = root.querySelector(`[data-confirm="${id}"]`); if (!box) return;
+  S.confirmOpen = id;
   box.hidden = false; box.innerHTML = html;
-  box.querySelector("[data-ok]").addEventListener("click", () => onOk(box));
-  box.querySelector("[data-no]").addEventListener("click", () => { box.hidden = true; box.innerHTML = ""; });
+  box.querySelector("[data-ok]").addEventListener("click", e => {
+    box.querySelectorAll("button").forEach(b => b.disabled = true);
+    S.confirmOpen = null;
+    onOk(box);
+  });
+  box.querySelector("[data-no]").addEventListener("click", () => closeConfirm());
+  box.addEventListener("keydown", e => { if (e.key === "Escape") closeConfirm(); });
   const inp = box.querySelector("input,textarea"); if (inp) inp.focus();
+}
+// close the open note box; the list redraws (it was paused while the box was open)
+function closeConfirm(quiet) {
+  const id = S.confirmOpen; S.confirmOpen = null;
+  const box = id && document.querySelector(`[data-confirm="${id}"]`);
+  if (box) { box.hidden = true; box.innerHTML = ""; }
+  if (!quiet) render();
 }
 async function act(a, id, root) {
   const j = S.jobs.find(x => x.id === id); if (!j || !S.signedIn) return;
