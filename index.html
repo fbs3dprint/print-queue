@@ -46,7 +46,7 @@ nav.tabs button{font:inherit;font-weight:700;font-size:14px;border:0;background:
 nav.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--ink)}
 nav.tabs button:hover{color:var(--ink)}
 nav.tabs .count{font-family:var(--f-mono);font-size:11px;font-weight:400;margin-left:4px;color:var(--muted)}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.drop:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 main{padding-block:24px 64px}
 h2{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;text-wrap:balance}
 h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0;text-wrap:balance}
@@ -85,9 +85,9 @@ h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0;text-wra
 .issue .num[data-sev="info"]{background:#3C5A99}
 .issue .whole{font-family:var(--f-body);font-size:12px;font-weight:400;color:var(--muted);margin-left:6px}
 .viewer .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:20px}
-.drop{border:2px dashed var(--line);border-radius:var(--r);padding:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px;background:var(--surface);cursor:pointer}
-.drop.over{border-color:var(--accent);background:var(--accent-soft)}
-.drop strong{display:block}
+.upload-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.btn.big{font-size:16px;padding:12px 20px}
+.viewer.over{outline:3px dashed var(--accent);outline-offset:-3px}
 .readout{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 @media (max-width:520px){.readout{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .readout div{background:var(--surface);padding:10px 12px;min-width:0}
@@ -209,6 +209,15 @@ mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
     </div>
     <div class="submit-grid">
       <div>
+        <div class="upload-bar">
+          <input type="file" id="file" accept=".stl,model/stl,application/sla" hidden>
+          <button type="button" class="btn primary big" id="btnUpload">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            Upload 3D Model
+          </button>
+          <span class="muted" style="font-size:13px">STL file, in millimeters</span>
+          <button type="button" class="btn small" id="btnExample" style="margin-left:auto">Load example</button>
+        </div>
         <div class="viewer" id="viewer">
           <canvas id="cv" aria-label="3D preview of the model"></canvas>
           <div class="markers" id="markers" aria-hidden="true"></div>
@@ -224,12 +233,6 @@ mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
             <span><i style="background:#E5484D"></i>Floating part or hole</span>
           </div>
         </div>
-        <label class="drop" id="drop" tabindex="0">
-          <input type="file" id="file" accept=".stl,model/stl,application/sla" hidden>
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
-          <span><strong>Drop an STL here or click to choose</strong><span class="muted">Binary or ASCII STL, measured in millimeters</span></span>
-          <button type="button" class="btn small" id="btnExample" style="margin-left:auto">Load example</button>
-        </label>
       </div>
 
       <div id="report">
@@ -1142,8 +1145,9 @@ function renderReport() {
 }
 $("#fQty").addEventListener("input", () => S.draft && renderReport());
 
-const drop = $("#drop"), fileIn = $("#file");
-drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileIn.click(); } });
+// the Upload button opens the file picker; a file can also be dragged onto the 3D viewer
+const drop = $("#viewer"), fileIn = $("#file");
+$("#btnUpload").addEventListener("click", () => fileIn.click());
 ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
